@@ -237,7 +237,7 @@ function bouwContent(){
   </div>
   <div id="p-abonnementen" class="pnl">
     <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
-      <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div></div>
+      <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div><div class="kd"></div></div>
       <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div></div>
       <div class="kpi gr"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M21 t/m M28</div></div>
       <div class="kpi am"><div class="kl">Jeugd</div><div class="kv" id="ab-jg">—</div><div class="ks">M10 t/m M13</div></div>
@@ -253,8 +253,11 @@ function bouwContent(){
     </div>
     <div class="card"><div class="ct">Detail abonnementen</div><div class="cs">Alle codes gesorteerd op aantal</div>
       <table><thead><tr>
-        <th>Code</th><th>Omschrijving</th><th class="tr">Aantal</th><th class="tr">% totaal</th>
-        <th style="min-width:120px">Aandeel</th>
+        <th>Code</th><th>Omschrijving</th>
+        <th class="tr">2025-2026</th>
+        <th class="tr">2024-2025</th>
+        <th class="tr">Verschil</th>
+        <th style="min-width:100px">Aandeel</th>
       </tr></thead><tbody id="tbl-ab"></tbody></table>
     </div>
   </div>`;
@@ -396,6 +399,15 @@ function realTbl(id,rows,isUit){
 init();
 
 // ── ABONNEMENTEN TAB ───────────────────────────────────────
+const AB_VORIG = {
+  'M01':91,  'M01T':7,  'M02':255, 'M02T':13, 'M03':321, 'M03T':17,
+  'M04':252, 'M04T':15, 'M05':252, 'M05T':12, 'M06':130, 'M06T':10,
+  'M07':178, 'M07T':12, 'M22':158, 'M23':220, 'M24':13,  'M25':33,
+  'M26':183, 'M27':260, 'M28':184, 'MSM':2,   'MST':40,  'MSTT':12,
+  'MWK':32,  'SK10':14, 'SK5':13,  'YFM':28,  'YFMT':2,
+};
+const AB_VORIG_TOTAAL = 2759;
+
 const AB_OMSCHRIJVING = {
   'M01':'Senioren 1e abonnement',    'M01T':'Senioren 1e abo toeslag',
   'M02':'Senioren 2e abonnement',    'M02T':'Senioren 2e abo toeslag',
@@ -494,7 +506,7 @@ async function laadAbonnementen() {
 }
 
 function renderAbonnementen(telMap) {
-  const rows = Object.entries(telMap).sort((a,b) => b[1]-a[1]);
+  const rows = Object.entries(telMap).sort((a,b) => a[0].localeCompare(b[0]));
   const totaal = rows.reduce((s,[,n])=>s+n, 0);
 
   // KPI's
@@ -504,24 +516,45 @@ function renderAbonnementen(telMap) {
   const sel = rows.filter(([c])=>AB_GROEP[c]==='Selecties').reduce((s,[,n])=>s+n,0);
 
   tx('ab-tot', totaal.toLocaleString('nl-NL'));
+  const totVersch = totaal - AB_VORIG_TOTAAL;
+  const totKpi = g('ab-tot');
+  if (totKpi) {
+    const ks = totKpi.parentElement.querySelector('.ks');
+    if (ks) ks.textContent = `Vorig seizoen ${AB_VORIG_TOTAAL.toLocaleString('nl-NL')}`;
+    const kd = totKpi.parentElement.querySelector('.kd');
+    if (kd) { kd.textContent = `${totVersch>0?'▲ +':'▼ '}${totVersch.toLocaleString('nl-NL')} vs. vorig`; kd.className='kd '+(totVersch>=0?'pos':'neg'); }
+  }
   tx('ab-hr',  hr.toLocaleString('nl-NL'));
   tx('ab-ts',  ts.toLocaleString('nl-NL'));
   tx('ab-jg',  jg.toLocaleString('nl-NL'));
   tx('ab-sel', sel.toLocaleString('nl-NL'));
 
-  // Bar chart
+  // Bar chart — huidig vs vorig seizoen
   mkChart('c-ab-bar', {type:'bar', data:{
     labels: rows.map(([c])=>c),
-    datasets:[{
-      label:'Aantal',
-      data: rows.map(([,n])=>n),
-      backgroundColor: rows.map(([c])=>GROEP_CLR[AB_GROEP[c]]||GY),
-      borderRadius: 3,
-    }]
+    datasets:[
+      {
+        label:'2025-2026',
+        data: rows.map(([,n])=>n),
+        backgroundColor: rows.map(([c])=>GROEP_CLR[AB_GROEP[c]]||GY),
+        borderRadius: 3,
+      },
+      {
+        label:'2024-2025',
+        data: rows.map(([c])=>AB_VORIG[c]||0),
+        backgroundColor: rows.map(([c])=>(GROEP_CLR[AB_GROEP[c]]||GY)+'55'),
+        borderRadius: 3,
+      }
+    ]
   }, options:{responsive:true,maintainAspectRatio:false,
-    plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${c.label}: ${c.raw} abonnementen`}}},
-    scales:{x:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}},
-            y:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}}}}});
+    plugins:{
+      legend:{display:true,position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}`}}
+    },
+    scales:{
+      x:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}},
+      y:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}}
+    }}});
 
   // Pie chart per groep
   const groepMap = {};
@@ -542,22 +575,33 @@ function renderAbonnementen(telMap) {
              tooltip:{callbacks:{label:c=>`${c.label}: ${Math.round(c.raw/totaal*100)}%`}}}}});
 
   // Detail tabel
+  const totaalVorig = Object.values(AB_VORIG).reduce((s,n)=>s+n,0);
   g('tbl-ab').innerHTML = rows.map(([code, aantal])=>{
-    const pct = Math.round(aantal/totaal*100);
-    const omschr = AB_OMSCHRIJVING[code] || '—';
-    const clr = GROEP_CLR[AB_GROEP[code]]||GY;
+    const pct   = Math.round(aantal/totaal*100);
+    const vorig = AB_VORIG[code]||0;
+    const versch = aantal - vorig;
+    const omschr = AB_OMSCHRIJVING[code]||'—';
+    const clr   = GROEP_CLR[AB_GROEP[code]]||GY;
+    const vclr  = versch>0?GR:versch<0?RD:'#888';
     return `<tr>
       <td style="font-weight:600;color:${clr}">${code}</td>
       <td>${omschr}</td>
       <td class="tr" style="font-weight:600">${aantal.toLocaleString('nl-NL')}</td>
-      <td class="tr">${pct}%</td>
+      <td class="tr" style="color:#888">${vorig>0?vorig.toLocaleString('nl-NL'):'—'}</td>
+      <td class="tr" style="color:${vclr};font-weight:600">${vorig>0?(versch>0?'+':'')+versch:'—'}</td>
       <td><div style="display:flex;align-items:center;gap:4px">
         <div class="pb"><div class="pf" style="width:${Math.min(pct*3,100)}%;background:${clr}"></div></div>
         <span style="font-size:10px;color:#aaa;min-width:26px">${pct}%</span>
       </div></td>
     </tr>`;
   }).join('') +
-  `<tr class="tot"><td></td><td>Totaal</td><td class="tr">${totaal.toLocaleString('nl-NL')}</td><td class="tr">100%</td><td></td></tr>`;
+  `<tr class="tot">
+    <td></td><td>Totaal</td>
+    <td class="tr">${totaal.toLocaleString('nl-NL')}</td>
+    <td class="tr" style="color:#888">${AB_VORIG_TOTAAL.toLocaleString('nl-NL')}</td>
+    <td class="tr" style="color:${totaal>=AB_VORIG_TOTAAL?GR:RD};font-weight:700">${totaal>=AB_VORIG_TOTAAL?'+':''}${(totaal-AB_VORIG_TOTAAL).toLocaleString('nl-NL')}</td>
+    <td></td>
+  </tr>`;
 }
 
 // Laad abonnementen als tab wordt geopend
