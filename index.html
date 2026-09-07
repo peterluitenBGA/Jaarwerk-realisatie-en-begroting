@@ -236,11 +236,12 @@ function bouwContent(){
     </div>
   </div>
   <div id="p-abonnementen" class="pnl">
-    <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
-      <div class="kpi bl"><div class="kl">Totaal abonnementen</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle codes</div></div>
-      <div class="kpi gr"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M05</div></div>
-      <div class="kpi am"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M06, M07, M22-M25</div></div>
-      <div class="kpi rd"><div class="kl">Overig</div><div class="kv" id="ab-ov">—</div><div class="ks">Selecties, jeugd, overig</div></div>
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div></div>
+      <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div></div>
+      <div class="kpi gr"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M21 t/m M28</div></div>
+      <div class="kpi am"><div class="kl">Jeugd</div><div class="kv" id="ab-jg">—</div><div class="ks">M10 t/m M13</div></div>
+      <div class="kpi rd"><div class="kl">Selecties</div><div class="kv" id="ab-sel">—</div><div class="ks">MST, MWK, SK, YFM</div></div>
     </div>
     <div class="g2">
       <div class="card"><div class="ct">Aantallen per abonnementscode</div><div class="cs">Totaal per code</div>
@@ -396,35 +397,55 @@ init();
 
 // ── ABONNEMENTEN TAB ───────────────────────────────────────
 const AB_OMSCHRIJVING = {
-  'M01':'Senioren 1e abonnement','M01T':'Senioren 1e abo toeslag',
-  'M02':'Senioren 2e abonnement','M02T':'Senioren 2e abo toeslag',
-  'M03':'Junioren 1e abonnement','M03T':'Junioren 1e abo toeslag',
+  'M01':'Senioren 1e abonnement',    'M01T':'Senioren 1e abo toeslag',
+  'M02':'Senioren 2e abonnement',    'M02T':'Senioren 2e abo toeslag',
+  'M03':'Junioren 1e abonnement',    'M03T':'Junioren 1e abo toeslag',
   'M04':'Pupillen/Jun 2e abonnement','M04T':'Pupillen/Jun 2e abo toeslag',
-  'M05':'Pupillen 1e abonnement','M05T':'Pupillen 1e abo toeslag',
-  'M06':'Recreatie volwassenen','M06T':'Recreatie volwassenen toeslag',
-  'M07':'Recreatie jeugd','M07T':'Recreatie jeugd toeslag',
-  'M22':'Toerschaatsen senioren','M23':'Toerschaatsen jeugd',
-  'M25':'Toerschaatsen 65+','M26':'Trainersabonnement',
-  'M27':'Selectie langebaan','M28':'Selectie marathon',
-  'MST':'Strippenkaart','MSTT':'Strippenkaart toeslag',
-  'MWK':'Wedstrijdkaart','SK10':'Strippenkaart 10',
-  'SK5':'Strippenkaart 5','YFM':'Jeugdschaatsen',
+  'M05':'Pupillen 1e abonnement',    'M05T':'Pupillen 1e abo toeslag',
+  'M06':'Recreatie volwassenen',     'M06T':'Recreatie volwassenen toeslag',
+  'M07':'Recreatie jeugd',           'M07T':'Recreatie jeugd toeslag',
+  'M10':'Jeugdschaatsen heel',       'M10T':'Jeugdschaatsen heel toeslag',
+  'M11':'Jeugdschaatsen half',       'M11T':'Jeugdschaatsen half toeslag',
+  'M12':'IJshockey',                 'M12T':'IJshockey toeslag',
+  'M13':'Jeugdschaatsen overig',     'M13T':'Jeugdschaatsen overig toeslag',
+  'M21':'Toerschaatsen senioren',    'M21T':'Toerschaatsen senioren toeslag',
+  'M22':'Toerschaatsen senioren',    'M22T':'Toerschaatsen senioren toeslag',
+  'M23':'Toerschaatsen jeugd',       'M23T':'Toerschaatsen jeugd toeslag',
+  'M24':'Toerschaatsen 65+',         'M24T':'Toerschaatsen 65+ toeslag',
+  'M25':'Toerschaatsen 65+',         'M25T':'Toerschaatsen 65+ toeslag',
+  'M26':'Trainersabonnement',        'M26T':'Trainersabonnement toeslag',
+  'M27':'Selectie langebaan',        'M27T':'Selectie langebaan toeslag',
+  'M28':'Selectie marathon',         'M28T':'Selectie marathon toeslag',
+  'MSM':'Marathon selectie',
+  'SNA':'Selectie neo-senioren A',
+  'MST':'Strippenkaart',             'MSTT':'Strippenkaart toeslag',
+  'MWK':'Wedstrijdkaart',
+  'SK10':'Strippenkaart 10 beurten', 'SK5':'Strippenkaart 5 beurten',
+  'YFM':'Jeugdschaatsen abonnement', 'YFMT':'Jeugdschaatsen abo toeslag',
 };
 
 const AB_GROEP = {
   'M01':'Hardrijden','M01T':'Hardrijden','M02':'Hardrijden','M02T':'Hardrijden',
   'M03':'Hardrijden','M03T':'Hardrijden','M04':'Hardrijden','M04T':'Hardrijden',
-  'M05':'Hardrijden','M05T':'Hardrijden',
-  'M06':'Toerschaatsen','M06T':'Toerschaatsen','M07':'Toerschaatsen','M07T':'Toerschaatsen',
-  'M22':'Toerschaatsen','M23':'Toerschaatsen','M25':'Toerschaatsen',
-  'M26':'Selecties','M27':'Selecties','M28':'Selecties',
-  'MST':'Overig','MSTT':'Overig','MWK':'Overig',
-  'SK10':'Overig','SK5':'Overig','YFM':'Jeugd',
+  'M05':'Hardrijden','M05T':'Hardrijden','M06':'Hardrijden','M06T':'Hardrijden',
+  'M07':'Hardrijden','M07T':'Hardrijden',
+  'M21':'Toerschaatsen','M21T':'Toerschaatsen','M22':'Toerschaatsen','M22T':'Toerschaatsen',
+  'M23':'Toerschaatsen','M23T':'Toerschaatsen','M24':'Toerschaatsen','M24T':'Toerschaatsen',
+  'M25':'Toerschaatsen','M25T':'Toerschaatsen','M26':'Toerschaatsen','M26T':'Toerschaatsen',
+  'M27':'Toerschaatsen','M27T':'Toerschaatsen','M28':'Toerschaatsen','M28T':'Toerschaatsen',
+  'M10':'Jeugd','M10T':'Jeugd','M11':'Jeugd','M11T':'Jeugd',
+  'M12':'Jeugd','M12T':'Jeugd','M13':'Jeugd','M13T':'Jeugd',
+  'MSM':'Selecties','SNA':'Selecties','MST':'Selecties','MSTT':'Selecties',
+  'MWK':'Selecties','SK10':'Selecties','SK5':'Selecties',
+  'YFM':'Selecties','YFMT':'Selecties',
 };
 
 const GROEP_CLR = {
-  'Hardrijden': BL, 'Toerschaatsen': GR, 'Selecties': AM,
-  'Jeugd': '#BA7517', 'Overig': GY,
+  'Hardrijden':   BL,
+  'Toerschaatsen': GR,
+  'Jeugd':        AM,
+  'Selecties':    RD,
+  'Overig':       GY,
 };
 
 async function laadAbonnementen() {
@@ -479,12 +500,14 @@ function renderAbonnementen(telMap) {
   // KPI's
   const hr  = rows.filter(([c])=>AB_GROEP[c]==='Hardrijden').reduce((s,[,n])=>s+n,0);
   const ts  = rows.filter(([c])=>AB_GROEP[c]==='Toerschaatsen').reduce((s,[,n])=>s+n,0);
-  const ov  = rows.filter(([c])=>!['Hardrijden','Toerschaatsen'].includes(AB_GROEP[c])).reduce((s,[,n])=>s+n,0);
+  const jg  = rows.filter(([c])=>AB_GROEP[c]==='Jeugd').reduce((s,[,n])=>s+n,0);
+  const sel = rows.filter(([c])=>AB_GROEP[c]==='Selecties').reduce((s,[,n])=>s+n,0);
 
   tx('ab-tot', totaal.toLocaleString('nl-NL'));
   tx('ab-hr',  hr.toLocaleString('nl-NL'));
   tx('ab-ts',  ts.toLocaleString('nl-NL'));
-  tx('ab-ov',  ov.toLocaleString('nl-NL'));
+  tx('ab-jg',  jg.toLocaleString('nl-NL'));
+  tx('ab-sel', sel.toLocaleString('nl-NL'));
 
   // Bar chart
   mkChart('c-ab-bar', {type:'bar', data:{
