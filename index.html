@@ -150,7 +150,7 @@ async function wisselBJ(id){
     const [samenv,rvb,balans,alle] = await Promise.all([
       sbGet('v_samenvatting_per_categorie',`boekjaar=eq.${encodeURIComponent(BJ_NAAM)}&select=*`),
       sbGet('v_realisatie_vs_begroting',`boekjaar_id=eq.${id}&select=*`),
-      sbGet('balans',`boekjaar_id=eq.${id}&select=rekeningnr,bedrag`),
+      sbGet('balans',`boekjaar_id=eq.${id}&select=rekeningnr,bedrag,grootboek(omschrijving)`),
       sbGet('v_samenvatting_per_categorie','select=boekjaar,categorie,totaal_inkomsten,totaal_uitgaven&order=boekjaar.asc'),
     ]);
     DATA={samenv,rvb,balans,alle};
@@ -346,16 +346,35 @@ function renderBal(){
   const ir=rvb.filter(r=>r.type==='inkomsten').reduce((s,r)=>s+(r.realisatie_inkomsten||0),0);
   const ur=rvb.filter(r=>r.type==='kosten').reduce((s,r)=>s+(r.realisatie_uitgaven||0),0);
   const res=ir-ur;
+
+  // Liquide middelen: 1100 + 1110
   const liq=balans.filter(r=>['1100','1110'].includes(r.rekeningnr)).reduce((s,r)=>s+(r.bedrag||0),0);
-  const ev=balans.filter(r=>r.rekeningnr.startsWith('5')).reduce((s,r)=>s+(r.bedrag||0),0);
+  // Eigen vermogen: 5xx reserves
+  const ev=balans.filter(r=>r.rekeningnr.startsWith('5')).reduce((s,r)=>s+Math.abs(r.bedrag||0),0);
+
   const re=g('bal-res');re.textContent=fmts(res);re.className='kv '+(res>=0?'pos':'neg');
   tx('bal-bj',BJ_NAAM);tx('bal-liq',fmt(liq));tx('bal-ev',fmt(ev+res));
+
   const lst=(el,items)=>{g(el).innerHTML=items.map(([k,v],i,a)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:${i<a.length-1?'.5px solid #f0f0f0':'none'};font-weight:${i===a.length-1?600:400}"><span style="font-size:12px">${k}</span><span style="font-size:12px">${v}</span></div>`).join('');};
-  const activa=balans.filter(r=>r.rekeningnr.startsWith('1')&&(r.bedrag||0)>0);
-  const passiva=balans.filter(r=>r.rekeningnr.startsWith('1')&&(r.bedrag||0)<0);
-  const reserves=balans.filter(r=>r.rekeningnr.startsWith('5'));
-  lst('bal-activa',[...activa.map(r=>[r.rekeningnr,fmt(r.bedrag||0)]),['Totaal activa',fmt(activa.reduce((s,r)=>s+(r.bedrag||0),0))]]);
-  lst('bal-passiva',[...passiva.map(r=>[r.rekeningnr,fmts(r.bedrag||0)]),...reserves.map(r=>[r.rekeningnr,fmt(r.bedrag||0)]),['Resultaat boekjaar',fmts(res)],['Totaal passiva',fmt(Math.abs(passiva.reduce((s,r)=>s+(r.bedrag||0),0))+ev+res)]]);
+
+  // ACTIVA: alle rekeningen met positief eindbedrag
+  const activa = balans.filter(r=>(r.bedrag||0)>0).sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const totActiva = activa.reduce((s,r)=>s+(r.bedrag||0),0);
+
+  // PASSIVA: alle rekeningen met negatief eindbedrag (schulden + reserves)
+  const passiva = balans.filter(r=>(r.bedrag||0)<0).sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const totPassiva = passiva.reduce((s,r)=>s+(r.bedrag||0),0);
+
+  lst('bal-activa',[
+    ...activa.map(r=>[`${r.rekeningnr} ${r.grootboek?.omschrijving||''}`, fmt(r.bedrag||0)]),
+    ['Totaal activa', fmt(totActiva)]
+  ]);
+
+  lst('bal-passiva',[
+    ...passiva.map(r=>[`${r.rekeningnr} ${r.grootboek?.omschrijving||''}`, fmts(r.bedrag||0)]),
+    ['Resultaat boekjaar', fmts(res)],
+    ['Totaal passiva', fmts(totPassiva+res)]
+  ]);
 }
 
 function renderReal(){
