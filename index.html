@@ -147,12 +147,17 @@ async function wisselBJ(id){
   tx('h-bj',BJ_NAAM);
   if(!g('p-overzicht')) bouwContent();
   try{
-    const [samenv,rvb,balans,alle] = await Promise.all([
+    const [samenv,rvb,balansRaw,alle,grootboek] = await Promise.all([
       sbGet('v_samenvatting_per_categorie',`boekjaar=eq.${encodeURIComponent(BJ_NAAM)}&select=*`),
       sbGet('v_realisatie_vs_begroting',`boekjaar_id=eq.${id}&select=*`),
-      sbGet('balans',`boekjaar_id=eq.${id}&select=rekeningnr,bedrag,grootboek(omschrijving)`),
+      sbGet('balans',`boekjaar_id=eq.${id}&select=rekeningnr,bedrag`),
       sbGet('v_samenvatting_per_categorie','select=boekjaar,categorie,totaal_inkomsten,totaal_uitgaven&order=boekjaar.asc'),
+      sbGet('grootboek','select=rekeningnr,omschrijving'),
     ]);
+    // Koppel omschrijvingen aan balans
+    const gbMap = {};
+    grootboek.forEach(r=>gbMap[r.rekeningnr]=r.omschrijving);
+    const balans = balansRaw.map(r=>({...r, omschrijving: gbMap[r.rekeningnr]||r.rekeningnr}));
     DATA={samenv,rvb,balans,alle};
     renderAlles();
   }catch(e){console.error(e);}
@@ -366,12 +371,12 @@ function renderBal(){
   const totPassiva = passiva.reduce((s,r)=>s+(r.bedrag||0),0);
 
   lst('bal-activa',[
-    ...activa.map(r=>[`${r.rekeningnr} ${r.grootboek?.omschrijving||''}`, fmt(r.bedrag||0)]),
+    ...activa.map(r=>[`${r.rekeningnr} ${r.omschrijving||''}`, fmt(r.bedrag||0)]),
     ['Totaal activa', fmt(totActiva)]
   ]);
 
   lst('bal-passiva',[
-    ...passiva.map(r=>[`${r.rekeningnr} ${r.grootboek?.omschrijving||''}`, fmts(r.bedrag||0)]),
+    ...passiva.map(r=>[`${r.rekeningnr} ${r.omschrijving||''}`, fmts(r.bedrag||0)]),
     ['Resultaat boekjaar', fmts(res)],
     ['Totaal passiva', fmts(totPassiva+res)]
   ]);
