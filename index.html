@@ -428,18 +428,31 @@ const GROEP_CLR = {
 };
 
 async function laadAbonnementen() {
+  const tbl = g('tbl-ab');
+  if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+
   try {
-    // Haal alle abonnementen op uit public schema
-    const r = await fetch(
-      `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&abonnementscode=not.is.null`,
-      { headers: {
+    // Haal alle abonnementen op — public schema, geen Accept-Profile
+    const url = `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&limit=10000`;
+    const r = await fetch(url, {
+      headers: {
         'apikey': SB_KEY,
         'Authorization': `Bearer ${SB_KEY}`,
-        // public schema — geen Accept-Profile header nodig
-      }}
-    );
-    if (!r.ok) throw new Error(`${r.status}`);
+      }
+    });
+
+    if (!r.ok) {
+      const txt = await r.text();
+      throw new Error(`${r.status}: ${txt}`);
+    }
+
     const data = await r.json();
+    console.log('Abonnementen geladen:', data.length, 'rijen');
+
+    if (!data.length) {
+      if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">Geen abonnementen gevonden</td></tr>';
+      return;
+    }
 
     // Tel per code
     const telMap = {};
@@ -451,7 +464,11 @@ async function laadAbonnementen() {
 
     renderAbonnementen(telMap);
   } catch(e) {
-    g('p-abonnementen').innerHTML += `<div style="padding:20px;color:#A32D2D">❌ Fout bij laden abonnementen: ${e.message}</div>`;
+    console.error('Fout abonnementen:', e);
+    const panel = g('p-abonnementen');
+    if (panel) panel.insertAdjacentHTML('beforeend',
+      `<div style="padding:20px;color:#A32D2D;font-size:13px">❌ Fout bij laden abonnementen: ${e.message}</div>`);
+    if (tbl) tbl.innerHTML = '';
   }
 }
 
@@ -524,8 +541,11 @@ function renderAbonnementen(telMap) {
 const origShowTab = showTab;
 window.showTab = function(id, el) {
   origShowTab(id, el);
-  if (id === 'abonnementen' && !g('tbl-ab').innerHTML) {
-    laadAbonnementen();
+  if (id === 'abonnementen') {
+    const tbl = g('tbl-ab');
+    if (tbl && !tbl.innerHTML) {
+      laadAbonnementen();
+    }
   }
 };
 </script>
