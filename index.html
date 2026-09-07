@@ -462,34 +462,41 @@ const GROEP_CLR = {
 
 async function laadAbonnementen() {
   const tbl = g('tbl-ab');
-  if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+  if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
 
   try {
-    // Haal alle abonnementen op — public schema, geen Accept-Profile
-    const url = `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&limit=10000`;
-    const r = await fetch(url, {
-      headers: {
-        'apikey': SB_KEY,
-        'Authorization': `Bearer ${SB_KEY}`,
+    // Haal ALLE abonnementen op met paginering (Supabase max 1000 per keer)
+    let alleData = [];
+    let offset = 0;
+    const pageSize = 1000;
+    while (true) {
+      const url = `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&limit=${pageSize}&offset=${offset}`;
+      const r = await fetch(url, {
+        headers: {
+          'apikey': SB_KEY,
+          'Authorization': `Bearer ${SB_KEY}`,
+          'Range-Unit': 'items',
+        }
+      });
+      if (!r.ok) {
+        const txt = await r.text();
+        throw new Error(`${r.status}: ${txt}`);
       }
-    });
-
-    if (!r.ok) {
-      const txt = await r.text();
-      throw new Error(`${r.status}: ${txt}`);
+      const data = await r.json();
+      alleData = alleData.concat(data);
+      console.log(`Abonnementen geladen: ${alleData.length} rijen (batch ${offset/pageSize+1})`);
+      if (data.length < pageSize) break; // laatste pagina
+      offset += pageSize;
     }
 
-    const data = await r.json();
-    console.log('Abonnementen geladen:', data.length, 'rijen');
-
-    if (!data.length) {
-      if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">Geen abonnementen gevonden</td></tr>';
+    if (!alleData.length) {
+      if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen abonnementen gevonden</td></tr>';
       return;
     }
 
     // Tel per code
     const telMap = {};
-    data.forEach(row => {
+    alleData.forEach(row => {
       const code = (row.abonnementscode || '').trim();
       if (!code) return;
       telMap[code] = (telMap[code] || 0) + 1;
