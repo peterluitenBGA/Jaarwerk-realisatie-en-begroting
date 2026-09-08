@@ -485,7 +485,7 @@ async function laadAbonnementen() {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
     });
     const seizoenenData = await seizoenenR.json();
-    const seizoenen = [...new Set(seizoenenData.map(r=>r.seizoen).filter(Boolean))].sort().reverse();
+    const seizoenen = [...new Set(seizoenenData.map(r=>r.seizoen).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
 
     if (!seizoenen.length) {
       if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen seizoenen gevonden</td></tr>';
