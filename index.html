@@ -481,7 +481,7 @@ async function laadAbonnementen() {
 
   try {
     // Haal beschikbare seizoenen op
-    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen?select=seizoen&order=seizoen.desc`, {
+    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen?select=seizoen&order=seizoen.desc&limit=5000`, {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
     });
     const seizoenenData = await seizoenenR.json();
@@ -495,27 +495,24 @@ async function laadAbonnementen() {
     const huidigSeizoen = seizoenen[0];
     const vorigSeizoen  = seizoenen[1] || null;
 
-    // Update header labels
-    const ths = document.querySelectorAll('#tbl-ab')?.parentElement?.querySelectorAll('th');
-    if (ths && ths.length >= 4) {
-      ths[2].textContent = huidigSeizoen;
-      ths[3].textContent = vorigSeizoen || 'Vorig seizoen';
-    }
+    console.log('Seizoenen gevonden:', seizoenen);
+    console.log('Huidig:', huidigSeizoen, '| Vorig:', vorigSeizoen);
 
     // Haal data op per seizoen met paginering
     async function haalSeizoen(seizoen) {
       let data = [], offset = 0;
       while (true) {
         const r = await fetch(
-          `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&seizoen=eq.${encodeURIComponent(seizoen)}&limit=1000&offset=${offset}`,
+          `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&seizoen=eq.${seizoen}&limit=1000&offset=${offset}`,
           {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
         );
         const batch = await r.json();
+        if (!Array.isArray(batch)) { console.error('Fout seizoen fetch:', batch); break; }
         data = data.concat(batch);
+        console.log(`Seizoen ${seizoen}: ${data.length} rijen geladen`);
         if (batch.length < 1000) break;
         offset += 1000;
       }
-      // Tel per code
       const telMap = {};
       data.forEach(row => {
         const code = (row.abonnementscode || '').trim();
