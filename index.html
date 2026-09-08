@@ -480,9 +480,15 @@ async function laadAbonnementen() {
   if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Seizoenen laden…</td></tr>';
 
   try {
-    // Haal beschikbare seizoenen op
-    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen?select=seizoen&order=seizoen.desc&limit=5000`, {
-      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    // Haal beschikbare seizoenen op - alleen unieke waarden
+    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen?select=seizoen&seizoen=not.is.null&order=seizoen.desc`, {
+      headers: {
+        'apikey': SB_KEY,
+        'Authorization': `Bearer ${SB_KEY}`,
+        'Prefer': 'count=none',
+        'Range-Unit': 'items',
+        'Range': '0-9999',
+      }
     });
     const seizoenenData = await seizoenenR.json();
     const seizoenen = [...new Set(seizoenenData.map(r=>r.seizoen).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
