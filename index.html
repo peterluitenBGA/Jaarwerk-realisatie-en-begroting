@@ -542,8 +542,6 @@ async function laadAbonnementen() {
     if (tbl) tbl.innerHTML = '';
   }
 }
-  }
-}
 
 function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vorigSeizoen='Vorig') {
   const rows = Object.entries(telHuidig).sort((a,b) => a[0].localeCompare(b[0]));
