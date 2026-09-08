@@ -753,6 +753,9 @@ async function laadVerenigingen() {
       VER_VORIG_SZ  ? haalData(VER_VORIG_SZ)  : Promise.resolve([]),
     ]);
 
+    console.log('Huidig data:', dataH.length, 'rijen');
+    console.log('Vorig data:', dataV.length, 'rijen');
+
     VER_DATA_HUIDIG = dataH;
     VER_DATA_VORIG  = dataV;
 
