@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BGA Schaatsvereniging Amsterdam – Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#f0f2f5;color:#1a1a2e}
+.hdr{background:#003D7C;color:#fff;padding:18px 28px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;border-bottom:3px solid #BA7517}
+.hdr-t{font-size:17px;font-weight:600}.hdr-s{font-size:11px;opacity:.6;margin-top:2px}
+.badges{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.badge{background:rgba(255,255,255,.13);border-radius:7px;padding:7px 14px;text-align:center}
+.bv{font-size:15px;font-weight:600}.bl{font-size:10px;opacity:.6;margin-top:1px}
+.sync{display:flex;align-items:center;gap:5px;font-size:11px;opacity:.7}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.dot.ok{background:#4ade80;animation:pulse 2s infinite}.dot.err{background:#f87171}.dot.idle{background:#fbbf24}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.topbar{background:#ecfdf5;border-bottom:2px solid #0F6E56;padding:10px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.topbar.err{background:#fef2f2;border-color:#dc2626}
+.topbar.idle{background:#fffbeb;border-color:#BA7517}
+.topbar-hint{font-size:12px;color:#065f46;flex:1}
+.topbar.err .topbar-hint{color:#991b1b}
+.topbar.idle .topbar-hint{color:#78350f}
+select.bj{border:1px solid #0F6E56;border-radius:5px;padding:6px 12px;font-size:13px;cursor:pointer;outline:none;background:white}
+.btn-ref{background:#003D7C;color:#fff;border:none;border-radius:5px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer}
+.btn-ref:hover{background:#002a6e}
+.tabs{background:#fff;display:flex;border-bottom:1px solid #e0e0e0;overflow-x:auto;padding:0 28px}
+.tab{padding:10px 16px;font-size:13px;font-weight:500;color:#888;cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;white-space:nowrap}
+.tab:hover{color:#003D7C}.tab.on{color:#003D7C;border-bottom-color:#003D7C}
+.wrap{padding:22px 28px;max-width:1140px}
+.pnl{display:none}.pnl.on{display:block}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:9px;margin-bottom:18px}
+.kpi{background:#fff;border-radius:8px;padding:13px 15px;border:.5px solid #e0e0e0;position:relative;overflow:hidden}
+.kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.kpi.bl::after{background:#003D7C}.kpi.gr::after{background:#0F6E56}.kpi.rd::after{background:#A32D2D}.kpi.am::after{background:#BA7517}
+.kl{font-size:11px;color:#888;margin-bottom:4px}.kv{font-size:19px;font-weight:600}
+.ks{font-size:11px;color:#bbb;margin-top:2px}.kd{font-size:11px;font-weight:600;margin-top:2px}
+.pos{color:#0F6E56}.neg{color:#A32D2D}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+.card{background:#fff;border:.5px solid #e0e0e0;border-radius:10px;padding:16px 18px;margin-bottom:12px}
+.ct{font-size:13px;font-weight:600;margin-bottom:1px}.cs{font-size:11px;color:#bbb;margin-bottom:12px}
+.leg{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:8px;font-size:11px;color:#888}
+.ld{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:3px;vertical-align:middle}
+.cat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:18px}
+.cat-card{background:#fff;border:.5px solid #e0e0e0;border-radius:10px;padding:14px 16px}
+.cat-naam{font-size:12px;font-weight:600;color:#555;margin-bottom:8px}
+.cat-row{display:flex;justify-content:space-between;font-size:12px;padding:2px 0}
+.cat-saldo{font-size:15px;font-weight:600;margin-top:6px;padding-top:6px;border-top:.5px solid #eee}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:10px;font-weight:600;color:#888;text-align:left;padding:6px 8px;border-bottom:1px solid #eee;text-transform:uppercase;letter-spacing:.04em;background:#fafafa;white-space:nowrap}
+td{padding:6px 8px;border-bottom:.5px solid #f0f0f0;vertical-align:middle}
+tr.tot td{background:#f5f5f3;font-weight:600;border-top:1px solid #ddd}
+tr:hover:not(.tot) td{background:#f0f6ff}
+.tr{text-align:right}.cd{color:#bbb;font-size:10px}
+.pb{background:#e8e8e8;border-radius:3px;height:5px;flex:1;min-width:36px}
+.pf{height:5px;border-radius:3px}
+.loading{display:flex;align-items:center;justify-content:center;height:120px;color:#888;font-size:13px;gap:10px}
+.spinner{width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#003D7C;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:660px){.g2{grid-template-columns:1fr}.wrap,.hdr,.topbar{padding-left:14px;padding-right:14px}.tabs{padding:0 6px}}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div><div class="hdr-t">BGA Schaatsvereniging Amsterdam</div><div class="hdr-s">Financieel dashboard · live uit Supabase</div></div>
+  <div class="badges">
+    <div class="badge"><div class="bv" id="h-res" style="color:#7FDBCA">—</div><div class="bl">Resultaat</div></div>
+    <div class="badge"><div class="bv" id="h-bj" style="color:#FAC775">—</div><div class="bl">Boekjaar</div></div>
+    <div class="sync"><span class="dot idle" id="sdot"></span><span id="slbl">Verbinden…</span></div>
+  </div>
+</div>
+<div class="topbar idle" id="topbar">
+  <div class="topbar-hint" id="topbar-hint">⏳ Verbinden met Supabase…</div>
+</div>
+<div class="tabs">
+  <button class="tab on"  onclick="showTab('overzicht',this)">Overzicht</button>
+  <button class="tab"     onclick="showTab('categorie',this)">Per categorie</button>
+  <button class="tab"     onclick="showTab('inkomsten',this)">Inkomsten</button>
+  <button class="tab"     onclick="showTab('uitgaven',this)">Uitgaven</button>
+  <button class="tab"     onclick="showTab('balans',this)">Balans</button>
+  <button class="tab"     onclick="showTab('realisatie',this)">Realisatie vs. begroting</button>
+  <button class="tab"     onclick="showTab('abonnementen',this)">Abonnementen</button>
+</div>
+<div class="wrap" id="main-wrap">
+  <div class="loading"><div class="spinner"></div> Data laden uit Supabase…</div>
+</div>
+<script>
+const SB_URL    = 'https://skrzsdwdogrgzurclfnt.supabase.co';
+const SB_KEY    = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNrcnpzZHdkb2dyZ3p1cmNsZm50Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5OTYyNDcsImV4cCI6MjA5NjU3MjI0N30.R3hUJxza0ZoF9AXJSVR-_1QzTc0JffcnUlRcDQtkIVo';
+const SB_SCHEMA = 'bga_dashboard';
+const BL='#003D7C',GR='#0F6E56',RD='#A32D2D',AM='#BA7517',GY='#888780',IJS='#7FDBCA';
+const CAT_CLR={bga:BL,lb:GR,mar:RD,jeugd:AM};
+const GRID='rgba(0,0,0,.06)';
+let CC={}, BJ_ID=null, BJ_NAAM='', BOEKJAREN=[], DATA={};
+
+const fmt  = n => '€\u00a0'+Math.abs(Math.round(n||0)).toLocaleString('nl-NL');
+const fmts = n => (n<0?'-':'')+fmt(n);
+const g    = id => document.getElementById(id);
+const tx   = (id,v) => {const e=g(id);if(e)e.textContent=v;};
+function delta(id,d,pl,nl){const e=g(id);if(!e)return;e.textContent=d>=0?(pl||'▲ +'+fmt(d)):(nl||'▼ -'+fmt(Math.abs(d)));e.className='kd '+(d>=0?'pos':'neg');}
+function showTab(id,el){document.querySelectorAll('.pnl').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));g('p-'+id).classList.add('on');el.classList.add('on');}
+function mkChart(id,cfg){if(CC[id])CC[id].destroy();CC[id]=new Chart(g(id),cfg);}
+function bOpts(h){const n={ticks:{callback:v=>'€'+Math.round(v/1000)+'k',font:{size:10},color:'#888'},grid:{color:GRID}};const c={ticks:{font:{size:10},color:'#888'},grid:{color:GRID}};return{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+fmts(ctx.raw)}}},scales:h?{x:n,y:c}:{x:c,y:n}};}
+
+async function sbGet(table, params=''){
+  const r = await fetch(`${SB_URL}/rest/v1/${table}?${params}`, {
+    headers:{
+      'apikey': SB_KEY,
+      'Authorization': `Bearer ${SB_KEY}`,
+      'Accept-Profile': SB_SCHEMA,
+    }
+  });
+  if(!r.ok) throw new Error(`${table}: ${r.status}`);
+  return r.json();
+}
+
+async function init(){
+  try{
+    BOEKJAREN = await sbGet('boekjaar','order=id.desc&select=id,omschrijving,actief');
+    const topbar = g('topbar');
+    topbar.className = 'topbar';
+    topbar.innerHTML = `
+      <div class="topbar-hint">✅ Verbonden · ${BOEKJAREN.length} boekjaren</div>
+      <select class="bj" id="bj-sel" onchange="wisselBJ(+this.value)">
+        ${BOEKJAREN.map(b=>`<option value="${b.id}" ${b.actief?'selected':''}>${b.omschrijving}</option>`).join('')}
+      </select>
+      <button class="btn-ref" onclick="wisselBJ(BJ_ID)">🔄 Vernieuwen</button>`;
+    g('sdot').className='dot ok';
+    tx('slbl','Live · Supabase');
+    const actief = BOEKJAREN.find(b=>b.actief)||BOEKJAREN[0];
+    await wisselBJ(actief.id);
+  }catch(e){
+    g('topbar').className='topbar err';
+    g('topbar').innerHTML=`<div class="topbar-hint">❌ Verbinding mislukt: ${e.message}</div>`;
+    g('sdot').className='dot err';
+    tx('slbl','Fout');
+    g('main-wrap').innerHTML=`<div style="padding:32px;text-align:center;color:#A32D2D;font-size:14px">❌ Verbinding mislukt.<br><br>Fout: ${e.message}</div>`;
+  }
+}
+
+async function wisselBJ(id){
+  BJ_ID=id;
+  const bj=BOEKJAREN.find(b=>b.id===id);
+  BJ_NAAM=bj?.omschrijving||'';
+  tx('h-bj',BJ_NAAM);
+  if(!g('p-overzicht')) bouwContent();
+  try{
+    const [samenv,rvb,balansRaw,alle,grootboek] = await Promise.all([
+      sbGet('v_samenvatting_per_categorie',`boekjaar=eq.${encodeURIComponent(BJ_NAAM)}&select=*`),
+      sbGet('v_realisatie_vs_begroting',`boekjaar_id=eq.${id}&select=*`),
+      sbGet('balans',`boekjaar_id=eq.${id}&select=rekeningnr,bedrag`),
+      sbGet('v_samenvatting_per_categorie','select=boekjaar,categorie,totaal_inkomsten,totaal_uitgaven&order=boekjaar.asc'),
+      sbGet('grootboek','select=rekeningnr,omschrijving'),
+    ]);
+    // Koppel omschrijvingen aan balans
+    const gbMap = {};
+    grootboek.forEach(r=>gbMap[r.rekeningnr]=r.omschrijving);
+    const balans = balansRaw.map(r=>({...r, omschrijving: gbMap[r.rekeningnr]||r.rekeningnr}));
+    DATA={samenv,rvb,balans,alle};
+    renderAlles();
+  }catch(e){console.error(e);}
+}
+
+function bouwContent(){
+  g('main-wrap').innerHTML=`
+  <div id="p-overzicht" class="pnl on">
+    <div class="kpis">
+      <div class="kpi bl"><div class="kl">Totaal inkomsten</div><div class="kv" id="o-ir">—</div><div class="ks" id="o-ib"></div><div class="kd" id="o-id"></div></div>
+      <div class="kpi rd"><div class="kl">Totaal uitgaven</div><div class="kv" id="o-ur">—</div><div class="ks" id="o-ub"></div><div class="kd" id="o-ud"></div></div>
+      <div class="kpi gr"><div class="kl">Resultaat</div><div class="kv" id="o-res">—</div><div class="ks" id="o-res-s"></div><div class="kd" id="o-resd"></div></div>
+      <div class="kpi am"><div class="kl">Begroot resultaat</div><div class="kv" id="o-bres">—</div><div class="ks" id="o-bres-s"></div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ct">Inkomsten vs. uitgaven</div><div class="cs">Per categorie – realisatie</div>
+        <div class="leg"><span><span class="ld" style="background:#003D7C"></span>Inkomsten</span><span><span class="ld" style="background:#A32D2D"></span>Uitgaven</span></div>
+        <div style="position:relative;height:210px"><canvas id="c1"></canvas></div>
+      </div>
+      <div class="card"><div class="ct">Verdeling inkomsten</div><div class="cs">Per categorie</div>
+        <div style="position:relative;height:240px"><canvas id="c2"></canvas></div>
+      </div>
+    </div>
+    <div class="card"><div class="ct">Alle boekjaren</div><div class="cs">Inkomsten, uitgaven en resultaat</div>
+      <div class="leg"><span><span class="ld" style="background:#003D7C"></span>Inkomsten</span><span><span class="ld" style="background:#A32D2D"></span>Uitgaven</span><span><span class="ld" style="background:#BA7517;border-radius:50%"></span>Resultaat</span></div>
+      <div style="position:relative;height:185px"><canvas id="c3"></canvas></div>
+    </div>
+  </div>
+  <div id="p-categorie" class="pnl">
+    <div class="cat-grid" id="cat-cards"></div>
+    <div class="card"><div class="ct">Saldo per categorie</div><div class="cs">Realisatie vs. begroting</div>
+      <div style="position:relative;height:220px"><canvas id="c-cat"></canvas></div>
+    </div>
+  </div>
+  <div id="p-inkomsten" class="pnl">
+    <div class="kpis" id="kpi-ink"></div>
+    <div class="card"><div class="ct">Inkomsten — begroot vs. gerealiseerd</div><div class="cs">Alle posten</div>
+      <div class="leg"><span><span class="ld" style="background:#003D7C"></span>Begroting</span><span><span class="ld" style="background:#0F6E56"></span>Realisatie</span></div>
+      <div style="position:relative" id="c-ink-wrap"><canvas id="c-ink"></canvas></div>
+    </div>
+    <div class="card"><div class="ct">Detail inkomsten</div>
+      <table><thead><tr><th>Code</th><th>Post</th><th>Cat.</th><th class="tr">Realisatie</th><th class="tr">Begroting</th><th class="tr">Verschil</th></tr></thead>
+      <tbody id="tbl-ink"></tbody></table>
+    </div>
+  </div>
+  <div id="p-uitgaven" class="pnl">
+    <div class="kpis" id="kpi-uit"></div>
+    <div class="card"><div class="ct">Uitgaven — begroot vs. gerealiseerd</div><div class="cs">Alle posten</div>
+      <div class="leg"><span><span class="ld" style="background:#A32D2D"></span>Begroting</span><span><span class="ld" style="background:#0F6E56"></span>Realisatie</span></div>
+      <div style="position:relative" id="c-uit-wrap"><canvas id="c-uit"></canvas></div>
+    </div>
+    <div class="card"><div class="ct">Detail uitgaven</div>
+      <table><thead><tr><th>Code</th><th>Post</th><th>Cat.</th><th class="tr">Realisatie</th><th class="tr">Begroting</th><th class="tr">Voordeel+/Nadeel-</th></tr></thead>
+      <tbody id="tbl-uit"></tbody></table>
+    </div>
+  </div>
+  <div id="p-balans" class="pnl">
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi gr"><div class="kl">Resultaat boekjaar</div><div class="kv pos" id="bal-res">—</div><div class="ks" id="bal-bj"></div></div>
+      <div class="kpi bl"><div class="kl">Liquide middelen</div><div class="kv" id="bal-liq">—</div><div class="ks">Bank + spaarrekening</div></div>
+      <div class="kpi am"><div class="kl">Eigen vermogen</div><div class="kv" id="bal-ev">—</div><div class="ks">Reserves totaal</div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ct">Activa</div><div id="bal-activa" style="margin-top:8px"></div></div>
+      <div class="card"><div class="ct">Passiva</div><div id="bal-passiva" style="margin-top:8px"></div></div>
+    </div>
+  </div>
+  <div id="p-realisatie" class="pnl">
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi bl"><div class="kl">Inkomsten gerealiseerd</div><div class="kv" id="r-iv">—</div><div class="ks" id="r-is"></div><div class="kd" id="r-id"></div></div>
+      <div class="kpi gr"><div class="kl">Uitgaven gerealiseerd</div><div class="kv" id="r-uv">—</div><div class="ks" id="r-us"></div><div class="kd" id="r-ud"></div></div>
+      <div class="kpi am"><div class="kl">Netto resultaat</div><div class="kv" id="r-rv">—</div><div class="ks" id="r-rs"></div><div class="kd" id="r-rd"></div></div>
+    </div>
+    <div class="card"><div class="ct">Inkomsten – realisatie vs. begroting</div><div class="cs">Groen = boven begroting · Rood = onder begroting</div>
+      <table><thead><tr><th>Code</th><th>Post</th><th class="tr">Begroot</th><th class="tr">Gerealiseerd</th><th class="tr">Verschil</th><th style="min-width:80px">%</th></tr></thead>
+      <tbody id="tbl-ri"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:12px"><div class="ct">Uitgaven – realisatie vs. begroting</div><div class="cs">Groen = voordeel · Rood = nadeel</div>
+      <table><thead><tr><th>Code</th><th>Post</th><th class="tr">Begroot</th><th class="tr">Gerealiseerd</th><th class="tr">Voordeel+/Nadeel-</th><th style="min-width:80px">%</th></tr></thead>
+      <tbody id="tbl-ru"></tbody></table>
+    </div>
+  </div>
+  <div id="p-abonnementen" class="pnl">
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
+      <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div><div class="kd"></div></div>
+      <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div></div>
+      <div class="kpi gr"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M21 t/m M28</div></div>
+      <div class="kpi am"><div class="kl">Jeugd</div><div class="kv" id="ab-jg">—</div><div class="ks">M10 t/m M13</div></div>
+      <div class="kpi rd"><div class="kl">Selecties</div><div class="kv" id="ab-sel">—</div><div class="ks">MST, MWK, SK, YFM</div></div>
+    </div>
+    <div class="g2">
+      <div class="card"><div class="ct">Aantallen per abonnementscode</div><div class="cs">Totaal per code</div>
+        <div style="position:relative;height:300px"><canvas id="c-ab-bar"></canvas></div>
+      </div>
+      <div class="card"><div class="ct">Verdeling per groep</div><div class="cs">Aandeel per categorie</div>
+        <div style="position:relative;height:300px"><canvas id="c-ab-pie"></canvas></div>
+      </div>
+    </div>
+    <div class="card"><div class="ct">Detail abonnementen</div><div class="cs">Alle codes gesorteerd op aantal</div>
+      <table><thead><tr>
+        <th>Code</th><th>Omschrijving</th>
+        <th class="tr">2025-2026</th>
+        <th class="tr">2024-2025</th>
+        <th class="tr">Verschil</th>
+        <th style="min-width:100px">Aandeel</th>
+      </tr></thead><tbody id="tbl-ab"></tbody></table>
+    </div>
+  </div>`;
+}
+
+function renderAlles(){renderOv();renderCat();renderInk();renderUit();renderBal();renderReal();}
+
+function renderOv(){
+  const {samenv,alle}=DATA;
+  const ir=samenv.reduce((s,r)=>s+(r.totaal_inkomsten||0),0);
+  const ur=samenv.reduce((s,r)=>s+(r.totaal_uitgaven||0),0);
+  const ib=samenv.reduce((s,r)=>s+(r.begroting_inkomsten||0),0);
+  const ub=samenv.reduce((s,r)=>s+(r.begroting_uitgaven||0),0);
+  const res=ir-ur,bres=ib-ub;
+  tx('h-res',fmts(res));
+  tx('o-ir',fmt(ir));tx('o-ib','Begroot '+fmt(ib));delta('o-id',ir-ib,'▲ +'+fmt(ir-ib)+' boven','▼ -'+fmt(ib-ir)+' onder');
+  tx('o-ur',fmt(ur));tx('o-ub','Begroot '+fmt(ub));delta('o-ud',ub-ur,'▼ '+fmt(ub-ur)+' minder','▲ '+fmt(ur-ub)+' meer');
+  const re=g('o-res');re.textContent=fmts(res);re.className='kv '+(res>=0?'pos':'neg');
+  tx('o-res-s',BJ_NAAM);delta('o-resd',res,'Positief resultaat','Negatief resultaat');
+  tx('o-bres',fmts(bres));tx('o-bres-s','Begroting '+BJ_NAAM);
+  mkChart('c1',{type:'bar',data:{labels:samenv.map(c=>c.categorie.toUpperCase()),datasets:[
+    {label:'Inkomsten',data:samenv.map(c=>c.totaal_inkomsten||0),backgroundColor:samenv.map(c=>CAT_CLR[c.categorie]||BL),borderRadius:3},
+    {label:'Uitgaven',data:samenv.map(c=>c.totaal_uitgaven||0),backgroundColor:samenv.map(c=>(CAT_CLR[c.categorie]||BL)+'88'),borderRadius:3}
+  ]},options:bOpts(false)});
+  mkChart('c2',{type:'doughnut',data:{
+    labels:samenv.map(c=>c.categorie.toUpperCase()+' '+Math.round((c.totaal_inkomsten||0)/Math.max(ir,1)*100)+'%'),
+    datasets:[{data:samenv.map(c=>c.totaal_inkomsten||0),backgroundColor:samenv.map(c=>CAT_CLR[c.categorie]||GY),borderWidth:0}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},boxWidth:9,padding:5}},tooltip:{callbacks:{label:c=>c.label+': '+fmt(c.raw)}}}}});
+  const jarenMap={};
+  alle.forEach(r=>{if(!jarenMap[r.boekjaar])jarenMap[r.boekjaar]={ir:0,ur:0};jarenMap[r.boekjaar].ir+=(r.totaal_inkomsten||0);jarenMap[r.boekjaar].ur+=(r.totaal_uitgaven||0);});
+  const jaren=Object.entries(jarenMap).sort(([a],[b])=>a.localeCompare(b));
+  mkChart('c3',{type:'bar',data:{labels:jaren.map(([j])=>j),datasets:[
+    {label:'Inkomsten',data:jaren.map(([,v])=>v.ir),backgroundColor:BL,borderRadius:3,yAxisID:'y'},
+    {label:'Uitgaven',data:jaren.map(([,v])=>v.ur),backgroundColor:RD,borderRadius:3,yAxisID:'y'},
+    {label:'Resultaat',data:jaren.map(([,v])=>v.ir-v.ur),type:'line',yAxisID:'y2',tension:.3,pointRadius:5,borderColor:AM,backgroundColor:'transparent',borderWidth:2}
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+fmts(c.raw)}}},
+  scales:{x:{ticks:{font:{size:11},color:'#888'},grid:{color:GRID}},y:{ticks:{callback:v=>'€'+Math.round(v/1000)+'k',font:{size:10},color:'#888'},grid:{color:GRID}},
+  y2:{position:'right',ticks:{callback:v=>'€'+Math.round(v/1000)+'k',font:{size:10},color:AM},grid:{display:false}}}}});
+}
+
+function renderCat(){
+  const {samenv}=DATA;
+  g('cat-cards').innerHTML=samenv.map(c=>{const s=(c.totaal_inkomsten||0)-(c.totaal_uitgaven||0),b=(c.begroting_inkomsten||0)-(c.begroting_uitgaven||0);
+    return`<div class="cat-card" style="border-left:4px solid ${CAT_CLR[c.categorie]||GY}">
+      <div class="cat-naam">${c.categorie.toUpperCase()}</div>
+      <div class="cat-row"><span>Inkomsten</span><span>${fmt(c.totaal_inkomsten||0)}</span></div>
+      <div class="cat-row"><span>Uitgaven</span><span>${fmt(c.totaal_uitgaven||0)}</span></div>
+      <div class="cat-row" style="color:#aaa;font-size:11px"><span>Begr. inkomsten</span><span>${fmt(c.begroting_inkomsten||0)}</span></div>
+      <div class="cat-row" style="color:#aaa;font-size:11px"><span>Begr. uitgaven</span><span>${fmt(c.begroting_uitgaven||0)}</span></div>
+      <div class="cat-saldo ${s>=0?'pos':'neg'}">${fmts(s)} <span style="color:#aaa;font-size:10px;font-weight:400">begroot: ${fmts(b)}</span></div>
+    </div>`;}).join('');
+  mkChart('c-cat',{type:'bar',data:{labels:samenv.map(c=>c.categorie.toUpperCase()),datasets:[
+    {label:'Realisatie',data:samenv.map(c=>(c.totaal_inkomsten||0)-(c.totaal_uitgaven||0)),backgroundColor:samenv.map(c=>{const s=(c.totaal_inkomsten||0)-(c.totaal_uitgaven||0);return s>=0?(CAT_CLR[c.categorie]||GR):RD;}),borderRadius:4},
+    {label:'Begroting',data:samenv.map(c=>(c.begroting_inkomsten||0)-(c.begroting_uitgaven||0)),backgroundColor:'rgba(0,0,0,.1)',borderRadius:4}
+  ]},options:bOpts(false)});
+}
+
+function renderInk(){
+  const rows=DATA.rvb.filter(r=>r.type==='inkomsten').sort((a,b)=>(b.realisatie_inkomsten||0)-(a.realisatie_inkomsten||0));
+  g('kpi-ink').innerHTML=rows.slice(0,4).map(r=>{const d=(r.realisatie_inkomsten||0)-(r.begroting_inkomsten||0);return`<div class="kpi bl"><div class="kl">${r.rekening.length>22?r.rekening.slice(0,21)+'…':r.rekening}</div><div class="kv">${fmt(r.realisatie_inkomsten||0)}</div><div class="ks">Begroot ${fmt(r.begroting_inkomsten||0)}</div><div class="kd ${d>=0?'pos':'neg'}">${d>=0?'▲ +':'▼ -'}${fmt(Math.abs(d))}</div></div>`;}).join('');
+  const h=Math.max(280,rows.length*26);g('c-ink-wrap').style.height=h+'px';
+  mkChart('c-ink',{type:'bar',data:{labels:rows.map(r=>r.rekening.length>18?r.rekening.slice(0,17)+'…':r.rekening),datasets:[
+    {label:'Begroting',data:rows.map(r=>r.begroting_inkomsten||0),backgroundColor:BL,borderRadius:2},
+    {label:'Realisatie',data:rows.map(r=>r.realisatie_inkomsten||0),backgroundColor:GR,borderRadius:2}
+  ]},options:bOpts(true)});
+  let tR=0,tB=0;
+  g('tbl-ink').innerHTML=rows.map(r=>{const ri=r.realisatie_inkomsten||0,bi=r.begroting_inkomsten||0;tR+=ri;tB+=bi;const d=ri-bi,c=d>=0?GR:RD;return`<tr><td class="cd">${r.rekeningnr}</td><td>${r.rekening}</td><td class="cd">${r.categorie}</td><td class="tr">${fmt(ri)}</td><td class="tr">${fmt(bi)}</td><td class="tr" style="color:${c};font-weight:600">${d>=0?'+':'-'}${fmt(Math.abs(d))}</td></tr>`;}).join('')+
+  `<tr class="tot"><td></td><td>Totaal</td><td></td><td class="tr">${fmt(tR)}</td><td class="tr">${fmt(tB)}</td><td class="tr" style="color:${tR>=tB?GR:RD};font-weight:700">${tR>=tB?'+':'-'}${fmt(Math.abs(tR-tB))}</td></tr>`;
+}
+
+function renderUit(){
+  const rows=DATA.rvb.filter(r=>r.type==='kosten').sort((a,b)=>(b.realisatie_uitgaven||0)-(a.realisatie_uitgaven||0));
+  g('kpi-uit').innerHTML=rows.slice(0,4).map(r=>{const d=(r.begroting_uitgaven||0)-(r.realisatie_uitgaven||0);return`<div class="kpi rd"><div class="kl">${r.rekening.length>22?r.rekening.slice(0,21)+'…':r.rekening}</div><div class="kv">${fmt(r.realisatie_uitgaven||0)}</div><div class="ks">Begroot ${fmt(r.begroting_uitgaven||0)}</div><div class="kd ${d>=0?'pos':'neg'}">${d>=0?'▼ '+fmt(d)+' bespaard':'▲ '+fmt(Math.abs(d))+' meer'}</div></div>`;}).join('');
+  const h=Math.max(280,rows.length*26);g('c-uit-wrap').style.height=h+'px';
+  mkChart('c-uit',{type:'bar',data:{labels:rows.map(r=>r.rekening.length>18?r.rekening.slice(0,17)+'…':r.rekening),datasets:[
+    {label:'Begroting',data:rows.map(r=>r.begroting_uitgaven||0),backgroundColor:RD,borderRadius:2},
+    {label:'Realisatie',data:rows.map(r=>r.realisatie_uitgaven||0),backgroundColor:GR,borderRadius:2}
+  ]},options:bOpts(true)});
+  let tR=0,tB=0;
+  g('tbl-uit').innerHTML=rows.map(r=>{const ru=r.realisatie_uitgaven||0,bu=r.begroting_uitgaven||0;tR+=ru;tB+=bu;const d=bu-ru,c=d>=0?GR:RD;return`<tr><td class="cd">${r.rekeningnr}</td><td>${r.rekening}</td><td class="cd">${r.categorie}</td><td class="tr">${fmt(ru)}</td><td class="tr">${fmt(bu)}</td><td class="tr" style="color:${c};font-weight:600">${d>=0?'+':'-'}${fmt(Math.abs(d))}</td></tr>`;}).join('')+
+  `<tr class="tot"><td></td><td>Totaal</td><td></td><td class="tr">${fmt(tR)}</td><td class="tr">${fmt(tB)}</td><td class="tr" style="color:${tR<=tB?GR:RD};font-weight:700">${tR<=tB?'+':'-'}${fmt(Math.abs(tB-tR))}</td></tr>`;
+}
+
+function renderBal(){
+  const {balans,rvb}=DATA;
+  const ir=rvb.filter(r=>r.type==='inkomsten').reduce((s,r)=>s+(r.realisatie_inkomsten||0),0);
+  const ur=rvb.filter(r=>r.type==='kosten').reduce((s,r)=>s+(r.realisatie_uitgaven||0),0);
+  const res=ir-ur;
+
+  // Liquide middelen: 1100 + 1110
+  const liq=balans.filter(r=>['1100','1110'].includes(r.rekeningnr)).reduce((s,r)=>s+(r.bedrag||0),0);
+  // Eigen vermogen: 5xx reserves
+  const ev=balans.filter(r=>r.rekeningnr.startsWith('5')).reduce((s,r)=>s+Math.abs(r.bedrag||0),0);
+
+  const re=g('bal-res');re.textContent=fmts(res);re.className='kv '+(res>=0?'pos':'neg');
+  tx('bal-bj',BJ_NAAM);tx('bal-liq',fmt(liq));tx('bal-ev',fmt(ev+res));
+
+  const lst=(el,items)=>{g(el).innerHTML=items.map(([k,v],i,a)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:${i<a.length-1?'.5px solid #f0f0f0':'none'};font-weight:${i===a.length-1?600:400}"><span style="font-size:12px">${k}</span><span style="font-size:12px">${v}</span></div>`).join('');};
+
+  // ACTIVA: alle rekeningen met positief eindbedrag
+  const activa = balans.filter(r=>(r.bedrag||0)>0).sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const totActiva = activa.reduce((s,r)=>s+(r.bedrag||0),0);
+
+  // PASSIVA: alle rekeningen met negatief eindbedrag (schulden + reserves)
+  const passiva = balans.filter(r=>(r.bedrag||0)<0).sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const totPassiva = passiva.reduce((s,r)=>s+(r.bedrag||0),0);
+
+  lst('bal-activa',[
+    ...activa.map(r=>[`${r.rekeningnr} ${r.omschrijving||''}`, fmt(r.bedrag||0)]),
+    ['Totaal activa', fmt(totActiva)]
+  ]);
+
+  lst('bal-passiva',[
+    ...passiva.map(r=>[`${r.rekeningnr} ${r.omschrijving||''}`, fmts(r.bedrag||0)]),
+    ['Resultaat boekjaar', fmts(res)],
+    ['Totaal passiva', fmts(totPassiva+res)]
+  ]);
+}
+
+function renderReal(){
+  const ink=DATA.rvb.filter(r=>r.type==='inkomsten').sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const uit=DATA.rvb.filter(r=>r.type==='kosten').sort((a,b)=>a.rekeningnr.localeCompare(b.rekeningnr));
+  const tIR=ink.reduce((s,r)=>s+(r.realisatie_inkomsten||0),0);
+  const tIB=ink.reduce((s,r)=>s+(r.begroting_inkomsten||0),0);
+  const tUR=uit.reduce((s,r)=>s+(r.realisatie_uitgaven||0),0);
+  const tUB=uit.reduce((s,r)=>s+(r.begroting_uitgaven||0),0);
+  const res=tIR-tUR;
+  tx('r-iv',fmt(tIR));tx('r-is','vs. begroot '+fmt(tIB));
+  g('r-id').textContent=Math.round(tIR/Math.max(tIB,1)*10)/10+'% gerealiseerd';
+  g('r-id').className='kd '+(tIR>=tIB?'pos':'neg');
+  tx('r-uv',fmt(tUR));tx('r-us','vs. begroot '+fmt(tUB));
+  g('r-ud').textContent=Math.round(tUR/Math.max(tUB,1)*10)/10+'% besteed';
+  g('r-ud').className='kd '+(tUR<=tUB?'pos':'neg');
+  g('r-rv').textContent=fmts(res);g('r-rv').className='kv '+(res>=0?'pos':'neg');
+  tx('r-rs',BJ_NAAM);
+  const rd=res-(tIB-tUB);g('r-rd').textContent=(rd>=0?'▲ +':'▼ -')+fmt(Math.abs(rd))+' vs. begroting';
+  g('r-rd').className='kd '+(rd>=0?'pos':'neg');
+  realTbl('tbl-ri',ink,false);realTbl('tbl-ru',uit,true);
+}
+
+function realTbl(id,rows,isUit){
+  let tb=0,tr2=0;
+  const html=rows.map(r=>{
+    const real=isUit?(r.realisatie_uitgaven||0):(r.realisatie_inkomsten||0);
+    const begr=isUit?(r.begroting_uitgaven||0):(r.begroting_inkomsten||0);
+    tb+=begr;tr2+=real;
+    const d=isUit?begr-real:real-begr,pct=begr>0?Math.min(Math.round(real/begr*100),150):0,c=d>=0?GR:RD;
+    return`<tr><td class="cd">${r.rekeningnr}</td><td>${r.rekening}</td><td class="tr">${fmt(begr)}</td><td class="tr">${fmt(real)}</td>
+    <td class="tr" style="color:${c};font-weight:600">${d>=0?'+':'-'}${fmt(Math.abs(d))}</td>
+    <td><div style="display:flex;align-items:center;gap:4px"><div class="pb"><div class="pf" style="width:${Math.min(pct,100)}%;background:${c}"></div></div>
+    <span style="font-size:10px;color:#aaa;min-width:26px">${pct}%</span></div></td></tr>`;
+  }).join('');
+  const td=isUit?tb-tr2:tr2-tb,tc=td>=0?GR:RD;
+  g(id).innerHTML=html+`<tr class="tot"><td></td><td>Totaal</td><td class="tr">${fmt(tb)}</td><td class="tr">${fmt(tr2)}</td>
+  <td class="tr" style="color:${tc};font-weight:700">${td>=0?'+':'-'}${fmt(Math.abs(td))}</td><td></td></tr>`;
+}
+
+init();
+
+// ── ABONNEMENTEN TAB ───────────────────────────────────────
+const AB_OMSCHRIJVING = {
+  'M01':'Senioren 1e abonnement',    'M01T':'Senioren 1e abo toeslag',
+  'M02':'Senioren 2e abonnement',    'M02T':'Senioren 2e abo toeslag',
+  'M03':'Junioren 1e abonnement',    'M03T':'Junioren 1e abo toeslag',
+  'M04':'Pupillen/Jun 2e abonnement','M04T':'Pupillen/Jun 2e abo toeslag',
+  'M05':'Pupillen 1e abonnement',    'M05T':'Pupillen 1e abo toeslag',
+  'M06':'Recreatie volwassenen',     'M06T':'Recreatie volwassenen toeslag',
+  'M07':'Recreatie jeugd',           'M07T':'Recreatie jeugd toeslag',
+  'M10':'Jeugdschaatsen heel',       'M10T':'Jeugdschaatsen heel toeslag',
+  'M11':'Jeugdschaatsen half',       'M11T':'Jeugdschaatsen half toeslag',
+  'M12':'IJshockey',                 'M12T':'IJshockey toeslag',
+  'M13':'Jeugdschaatsen overig',     'M13T':'Jeugdschaatsen overig toeslag',
+  'M21':'Toerschaatsen senioren',    'M21T':'Toerschaatsen senioren toeslag',
+  'M22':'Toerschaatsen senioren',    'M22T':'Toerschaatsen senioren toeslag',
+  'M23':'Toerschaatsen jeugd',       'M23T':'Toerschaatsen jeugd toeslag',
+  'M24':'Toerschaatsen 65+',         'M24T':'Toerschaatsen 65+ toeslag',
+  'M25':'Toerschaatsen 65+',         'M25T':'Toerschaatsen 65+ toeslag',
+  'M26':'Trainersabonnement',        'M26T':'Trainersabonnement toeslag',
+  'M27':'Selectie langebaan',        'M27T':'Selectie langebaan toeslag',
+  'M28':'Selectie marathon',         'M28T':'Selectie marathon toeslag',
+  'MSM':'Marathon selectie',
+  'SNA':'Selectie neo-senioren A',
+  'MST':'Strippenkaart',             'MSTT':'Strippenkaart toeslag',
+  'MWK':'Wedstrijdkaart',
+  'SK10':'Strippenkaart 10 beurten', 'SK5':'Strippenkaart 5 beurten',
+  'YFM':'Jeugdschaatsen abonnement', 'YFMT':'Jeugdschaatsen abo toeslag',
+};
+
+const AB_GROEP = {
+  'M01':'Hardrijden','M01T':'Hardrijden','M02':'Hardrijden','M02T':'Hardrijden',
+  'M03':'Hardrijden','M03T':'Hardrijden','M04':'Hardrijden','M04T':'Hardrijden',
+  'M05':'Hardrijden','M05T':'Hardrijden','M06':'Hardrijden','M06T':'Hardrijden',
+  'M07':'Hardrijden','M07T':'Hardrijden',
+  'M21':'Toerschaatsen','M21T':'Toerschaatsen','M22':'Toerschaatsen','M22T':'Toerschaatsen',
+  'M23':'Toerschaatsen','M23T':'Toerschaatsen','M24':'Toerschaatsen','M24T':'Toerschaatsen',
+  'M25':'Toerschaatsen','M25T':'Toerschaatsen','M26':'Toerschaatsen','M26T':'Toerschaatsen',
+  'M27':'Toerschaatsen','M27T':'Toerschaatsen','M28':'Toerschaatsen','M28T':'Toerschaatsen',
+  'M10':'Jeugd','M10T':'Jeugd','M11':'Jeugd','M11T':'Jeugd',
+  'M12':'Jeugd','M12T':'Jeugd','M13':'Jeugd','M13T':'Jeugd',
+  'MSM':'Selecties','SNA':'Selecties','MST':'Selecties','MSTT':'Selecties',
+  'MWK':'Selecties','SK10':'Selecties','SK5':'Selecties',
+  'YFM':'Selecties','YFMT':'Selecties',
+};
+
+const GROEP_CLR = {
+  'Hardrijden':   BL,
+  'Toerschaatsen': GR,
+  'Jeugd':        AM,
+  'Selecties':    RD,
+  'Overig':       GY,
+};
+
+async function laadAbonnementen() {
+  const tbl = g('tbl-ab');
+  if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Seizoenen laden…</td></tr>';
+
+  try {
+    // Haal beschikbare seizoenen op via aparte view
+    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen_seizoenen?select=seizoen&order=seizoen.desc`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const seizoenenData = await seizoenenR.json();
+    const seizoenen = seizoenenData.map(r=>r.seizoen).filter(Boolean);
+
+    if (!seizoenen.length) {
+      if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen seizoenen gevonden</td></tr>';
+      return;
+    }
+
+    const huidigSeizoen = seizoenen[0];
+    const vorigSeizoen  = seizoenen[1] || null;
+
+    console.log('Seizoenen gevonden:', seizoenen);
+    console.log('Huidig:', huidigSeizoen, '| Vorig:', vorigSeizoen);
+
+    // Haal data op per seizoen met paginering
+    async function haalSeizoen(seizoen) {
+      let data = [], offset = 0;
+      while (true) {
+        const r = await fetch(
+          `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&seizoen=eq.${seizoen}&limit=1000&offset=${offset}`,
+          {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
+        );
+        const batch = await r.json();
+        if (!Array.isArray(batch)) { console.error('Fout seizoen fetch:', batch); break; }
+        data = data.concat(batch);
+        console.log(`Seizoen ${seizoen}: ${data.length} rijen geladen`);
+        if (batch.length < 1000) break;
+        offset += 1000;
+      }
+      const telMap = {};
+      data.forEach(row => {
+        const code = (row.abonnementscode || '').trim();
+        if (!code) return;
+        telMap[code] = (telMap[code] || 0) + 1;
+      });
+      return telMap;
+    }
+
+    if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Abonnementen laden…</td></tr>';
+
+    const [telHuidig, telVorig] = await Promise.all([
+      haalSeizoen(huidigSeizoen),
+      vorigSeizoen ? haalSeizoen(vorigSeizoen) : Promise.resolve({}),
+    ]);
+
+    console.log(`Huidig (${huidigSeizoen}):`, Object.values(telHuidig).reduce((s,n)=>s+n,0), 'abonnementen');
+    console.log(`Vorig (${vorigSeizoen}):`, Object.values(telVorig).reduce((s,n)=>s+n,0), 'abonnementen');
+
+    renderAbonnementen(telHuidig, telVorig, huidigSeizoen, vorigSeizoen);
+
+  } catch(e) {
+    console.error('Fout abonnementen:', e);
+    const panel = g('p-abonnementen');
+    if (panel) panel.insertAdjacentHTML('beforeend',
+      `<div style="padding:20px;color:#A32D2D;font-size:13px">❌ Fout bij laden abonnementen: ${e.message}</div>`);
+    if (tbl) tbl.innerHTML = '';
+  }
+}
+
+function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vorigSeizoen='Vorig') {
+  const rows = Object.entries(telHuidig).sort((a,b) => a[0].localeCompare(b[0]));
+  const totaal = rows.reduce((s,[,n])=>s+n, 0);
+  const totaalVorig = Object.values(telVorig).reduce((s,n)=>s+n, 0);
+
+  // KPI's
+  const hr  = rows.filter(([c])=>AB_GROEP[c]==='Hardrijden').reduce((s,[,n])=>s+n,0);
+  const ts  = rows.filter(([c])=>AB_GROEP[c]==='Toerschaatsen').reduce((s,[,n])=>s+n,0);
+  const jg  = rows.filter(([c])=>AB_GROEP[c]==='Jeugd').reduce((s,[,n])=>s+n,0);
+  const sel = rows.filter(([c])=>AB_GROEP[c]==='Selecties').reduce((s,[,n])=>s+n,0);
+
+  tx('ab-tot', totaal.toLocaleString('nl-NL'));
+  const totVersch = totaal - totaalVorig;
+  const totKpi = g('ab-tot');
+  if (totKpi) {
+    const ks = totKpi.parentElement.querySelector('.ks');
+    if (ks) ks.textContent = `Vorig ${vorigSeizoen}: ${totaalVorig.toLocaleString('nl-NL')}`;
+    const kd = totKpi.parentElement.querySelector('.kd');
+    if (kd) { kd.textContent = `${totVersch>0?'▲ +':'▼ '}${totVersch.toLocaleString('nl-NL')} vs. vorig`; kd.className='kd '+(totVersch>=0?'pos':'neg'); }
+  }
+  tx('ab-hr',  hr.toLocaleString('nl-NL'));
+  tx('ab-ts',  ts.toLocaleString('nl-NL'));
+  tx('ab-jg',  jg.toLocaleString('nl-NL'));
+  tx('ab-sel', sel.toLocaleString('nl-NL'));
+
+  // Update tabel headers met seizoennamen
+  const tblHead = g('tbl-ab')?.closest('table')?.querySelector('thead');
+  if (tblHead) {
+    const ths = tblHead.querySelectorAll('th');
+    if (ths[2]) ths[2].textContent = huidigSeizoen;
+    if (ths[3]) ths[3].textContent = vorigSeizoen || 'Vorig seizoen';
+  }
+
+  // Bar chart — huidig vs vorig seizoen
+  mkChart('c-ab-bar', {type:'bar', data:{
+    labels: rows.map(([c])=>c),
+    datasets:[
+      {
+        label: huidigSeizoen,
+        data: rows.map(([,n])=>n),
+        backgroundColor: rows.map(([c])=>GROEP_CLR[AB_GROEP[c]]||GY),
+        borderRadius: 3,
+      },
+      {
+        label: vorigSeizoen||'Vorig seizoen',
+        data: rows.map(([c])=>telVorig[c]||0),
+        backgroundColor: rows.map(([c])=>(GROEP_CLR[AB_GROEP[c]]||GY)+'55'),
+        borderRadius: 3,
+      }
+    ]
+  }, options:{responsive:true,maintainAspectRatio:false,
+    plugins:{
+      legend:{display:true,position:'top',labels:{font:{size:11},boxWidth:12}},
+      tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}`}}
+    },
+    scales:{
+      x:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}},
+      y:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}}
+    }}});
+
+  // Pie chart per groep
+  const groepMap = {};
+  rows.forEach(([c,n])=>{
+    const g2 = AB_GROEP[c]||'Overig';
+    groepMap[g2] = (groepMap[g2]||0)+n;
+  });
+  const groepen = Object.entries(groepMap).sort((a,b)=>b[1]-a[1]);
+  mkChart('c-ab-pie', {type:'doughnut', data:{
+    labels: groepen.map(([g2,n])=>`${g2} (${n})`),
+    datasets:[{
+      data: groepen.map(([,n])=>n),
+      backgroundColor: groepen.map(([g2])=>GROEP_CLR[g2]||GY),
+      borderWidth:0,
+    }]
+  }, options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{position:'right',labels:{font:{size:11},boxWidth:10,padding:8}},
+             tooltip:{callbacks:{label:c=>`${c.label}: ${Math.round(c.raw/totaal*100)}%`}}}}});
+
+  // Detail tabel
+  g('tbl-ab').innerHTML = rows.map(([code, aantal])=>{
+    const pct    = Math.round(aantal/totaal*100);
+    const vorig  = telVorig[code]||0;
+    const versch = aantal - vorig;
+    const omschr = AB_OMSCHRIJVING[code]||'—';
+    const clr    = GROEP_CLR[AB_GROEP[code]]||GY;
+    const vclr   = versch>0?GR:versch<0?RD:'#888';
+    return `<tr>
+      <td style="font-weight:600;color:${clr}">${code}</td>
+      <td>${omschr}</td>
+      <td class="tr" style="font-weight:600">${aantal.toLocaleString('nl-NL')}</td>
+      <td class="tr" style="color:#888">${vorig>0?vorig.toLocaleString('nl-NL'):'—'}</td>
+      <td class="tr" style="color:${vclr};font-weight:600">${vorig>0?(versch>0?'+':'')+versch:'—'}</td>
+      <td><div style="display:flex;align-items:center;gap:4px">
+        <div class="pb"><div class="pf" style="width:${Math.min(pct*3,100)}%;background:${clr}"></div></div>
+        <span style="font-size:10px;color:#aaa;min-width:26px">${pct}%</span>
+      </div></td>
+    </tr>`;
+  }).join('') +
+  `<tr class="tot">
+    <td></td><td>Totaal</td>
+    <td class="tr">${totaal.toLocaleString('nl-NL')}</td>
+    <td class="tr" style="color:#888">${totaalVorig>0?totaalVorig.toLocaleString('nl-NL'):'—'}</td>
+    <td class="tr" style="color:${totaal>=totaalVorig?GR:RD};font-weight:700">${totaalVorig>0?(totaal>=totaalVorig?'+':'')+((totaal-totaalVorig).toLocaleString('nl-NL')):'—'}</td>
+    <td></td>
+  </tr>`;
+}
+
+// Laad abonnementen als tab wordt geopend
+const origShowTab = showTab;
+window.showTab = function(id, el) {
+  origShowTab(id, el);
+  if (id === 'abonnementen') {
+    const tbl = g('tbl-ab');
+    if (tbl && !tbl.innerHTML) {
+      laadAbonnementen();
+    }
+  }
+};
+</script>
+</body>
+</html>
