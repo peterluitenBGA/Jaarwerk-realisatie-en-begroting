@@ -82,6 +82,7 @@ tr:hover:not(.tot) td{background:#f0f6ff}
   <button class="tab"     onclick="showTab('balans',this)">Balans</button>
   <button class="tab"     onclick="showTab('realisatie',this)">Realisatie vs. begroting</button>
   <button class="tab"     onclick="showTab('abonnementen',this)">Abonnementen</button>
+  <button class="tab"     onclick="showTab('verenigingen',this)">Abonnementen verenigingen</button>
 </div>
 <div class="wrap" id="main-wrap">
   <div class="loading"><div class="spinner"></div> Data laden uit Supabase…</div>
@@ -240,7 +241,32 @@ function bouwContent(){
       <tbody id="tbl-ru"></tbody></table>
     </div>
   </div>
-  <div id="p-abonnementen" class="pnl">
+  <div id="p-verenigingen" class="pnl">
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi bl"><div class="kl">Totaal verenigingen</div><div class="kv" id="ver-tot">—</div><div class="ks" id="ver-tots"></div><div class="kd" id="ver-totd"></div></div>
+      <div class="kpi gr"><div class="kl">Huidig seizoen</div><div class="kv" id="ver-huid">—</div><div class="ks" id="ver-huids"></div></div>
+      <div class="kpi am"><div class="kl">Vorig seizoen</div><div class="kv" id="ver-vor">—</div><div class="ks" id="ver-vors"></div></div>
+    </div>
+    <div class="card"><div class="ct">Abonnementen per vereniging</div><div class="cs" id="ver-cs">Huidig vs. vorig seizoen</div>
+      <div style="position:relative" id="c-ver-wrap" style="height:300px"><canvas id="c-ver"></canvas></div>
+    </div>
+    <div class="card"><div class="ct">Detail per vereniging en abonnementscode</div>
+      <div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <input id="ver-zoek" placeholder="Zoek op vereniging..." style="border:.5px solid #e0e0e0;border-radius:5px;padding:6px 10px;font-size:12px;width:220px;outline:none" oninput="filterVerenigingen()">
+        <select id="ver-code-filter" style="border:.5px solid #e0e0e0;border-radius:5px;padding:6px 10px;font-size:12px;outline:none" onchange="filterVerenigingen()">
+          <option value="">Alle codes</option>
+        </select>
+      </div>
+      <table><thead><tr>
+        <th>Vereniging</th>
+        <th>Code</th>
+        <th class="tr" id="th-huid">Huidig</th>
+        <th class="tr" id="th-vor">Vorig</th>
+        <th class="tr">Verschil</th>
+      </tr></thead><tbody id="tbl-ver"></tbody></table>
+    </div>
+  </div>`;
+}
     <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
       <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div><div class="kd"></div></div>
       <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div><div class="kd"></div></div>
@@ -680,7 +706,180 @@ function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vori
   </tr>`;
 }
 
-// Laad abonnementen als tab wordt geopend
+// ── VERENIGINGEN TAB ───────────────────────────────────────
+let VER_DATA_HUIDIG = [];
+let VER_DATA_VORIG  = [];
+let VER_HUIDIG_SZ   = '';
+let VER_VORIG_SZ    = '';
+
+async function laadVerenigingen() {
+  const tbl = g('tbl-ver');
+  if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+
+  try {
+    // Seizoenen ophalen
+    const szR = await fetch(`${SB_URL}/rest/v1/abonnementen_seizoenen?select=seizoen&order=seizoen.desc&limit=100`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Prefer': 'count=none'}
+    });
+    const szData = await szR.json();
+    const seizoenen = szData.map(r=>r.seizoen).filter(Boolean);
+    VER_HUIDIG_SZ = seizoenen[0] || '';
+    VER_VORIG_SZ  = seizoenen[1] || '';
+
+    // Update headers
+    const thH = g('th-huid'); if (thH) thH.textContent = VER_HUIDIG_SZ || 'Huidig';
+    const thV = g('th-vor');  if (thV) thV.textContent = VER_VORIG_SZ  || 'Vorig';
+    const csEl = g('ver-cs'); if (csEl) csEl.textContent = `${VER_HUIDIG_SZ} vs. ${VER_VORIG_SZ}`;
+
+    // Data ophalen per seizoen
+    async function haalData(seizoen) {
+      let data = [], offset = 0;
+      while (true) {
+        const r = await fetch(
+          `${SB_URL}/rest/v1/abonnementen?select=vereniging,abonnementscode&seizoen=eq.${seizoen}&limit=1000&offset=${offset}`,
+          {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
+        );
+        const batch = await r.json();
+        if (!Array.isArray(batch)) break;
+        data = data.concat(batch);
+        if (batch.length < 1000) break;
+        offset += 1000;
+      }
+      return data;
+    }
+
+    const [dataH, dataV] = await Promise.all([
+      VER_HUIDIG_SZ ? haalData(VER_HUIDIG_SZ) : Promise.resolve([]),
+      VER_VORIG_SZ  ? haalData(VER_VORIG_SZ)  : Promise.resolve([]),
+    ]);
+
+    VER_DATA_HUIDIG = dataH;
+    VER_DATA_VORIG  = dataV;
+
+    renderVerenigingen();
+  } catch(e) {
+    console.error('Fout verenigingen:', e);
+    if (tbl) tbl.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:#A32D2D">❌ ${e.message}</td></tr>`;
+  }
+}
+
+function telVereniging(data) {
+  // Geeft map: {vereniging: {code: aantal}}
+  const map = {};
+  data.forEach(r => {
+    const ver  = (r.vereniging || 'Onbekend').trim();
+    const code = (r.abonnementscode || '').trim();
+    if (!map[ver]) map[ver] = {};
+    map[ver][code] = (map[ver][code] || 0) + 1;
+  });
+  return map;
+}
+
+let VER_ALLE_RIJEN = [];
+
+function renderVerenigingen() {
+  const mapH = telVereniging(VER_DATA_HUIDIG);
+  const mapV = telVereniging(VER_DATA_VORIG);
+
+  // Alle unieke verenigingen en codes
+  const alleVer  = [...new Set([...Object.keys(mapH), ...Object.keys(mapV)])].sort();
+  const alleCodes = [...new Set([
+    ...VER_DATA_HUIDIG.map(r=>(r.abonnementscode||'').trim()),
+    ...VER_DATA_VORIG.map(r=>(r.abonnementscode||'').trim()),
+  ].filter(Boolean))].sort();
+
+  // KPI's
+  const totH = VER_DATA_HUIDIG.length;
+  const totV = VER_DATA_VORIG.length;
+  tx('ver-tot', alleVer.length.toLocaleString('nl-NL'));
+  tx('ver-tots', `${alleVer.length} verenigingen`);
+  const verTotD = g('ver-totd');
+  if (verTotD) { verTotD.textContent = `${totH-totV>=0?'▲ +':'▼ '}${(totH-totV).toLocaleString('nl-NL')} abonnementen`; verTotD.className='kd '+(totH>=totV?'pos':'neg'); }
+  tx('ver-huid', totH.toLocaleString('nl-NL'));
+  tx('ver-huids', VER_HUIDIG_SZ);
+  tx('ver-vor', totV.toLocaleString('nl-NL'));
+  tx('ver-vors', VER_VORIG_SZ);
+
+  // Grafiek — top 15 verenigingen op huidig seizoen
+  const top15 = alleVer
+    .map(v => ({v, h: Object.values(mapH[v]||{}).reduce((s,n)=>s+n,0), vr: Object.values(mapV[v]||{}).reduce((s,n)=>s+n,0)}))
+    .sort((a,b)=>b.h-a.h).slice(0,15);
+  const chartH = Math.max(300, top15.length * 30);
+  g('c-ver-wrap').style.height = chartH + 'px';
+  mkChart('c-ver', {type:'bar', data:{
+    labels: top15.map(r=>r.v.length>25?r.v.slice(0,24)+'…':r.v),
+    datasets:[
+      {label: VER_HUIDIG_SZ||'Huidig', data: top15.map(r=>r.h), backgroundColor: BL, borderRadius:3},
+      {label: VER_VORIG_SZ||'Vorig',   data: top15.map(r=>r.vr), backgroundColor: BL+'55', borderRadius:3},
+    ]
+  }, options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',
+    plugins:{legend:{display:true,position:'top',labels:{font:{size:11},boxWidth:12}},
+             tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${c.raw}`}}},
+    scales:{x:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}},
+            y:{ticks:{font:{size:10},color:'#888'},grid:{color:GRID}}}}});
+
+  // Codekeuze filter opvullen
+  const sel = g('ver-code-filter');
+  if (sel) {
+    const huidig = sel.value;
+    sel.innerHTML = '<option value="">Alle codes</option>' +
+      alleCodes.map(c=>`<option value="${c}" ${c===huidig?'selected':''}>${c} — ${AB_OMSCHRIJVING[c]||''}</option>`).join('');
+  }
+
+  // Bouw alle rijen
+  VER_ALLE_RIJEN = [];
+  alleVer.forEach(ver => {
+    const codesVer = [...new Set([...Object.keys(mapH[ver]||{}), ...Object.keys(mapV[ver]||{})])].sort();
+    codesVer.forEach(code => {
+      const h = (mapH[ver]||{})[code] || 0;
+      const v = (mapV[ver]||{})[code] || 0;
+      if (h === 0 && v === 0) return;
+      VER_ALLE_RIJEN.push({ver, code, h, v});
+    });
+  });
+
+  filterVerenigingen();
+}
+
+function filterVerenigingen() {
+  const zoek = (g('ver-zoek')?.value || '').toLowerCase();
+  const code = g('ver-code-filter')?.value || '';
+
+  const gefilterd = VER_ALLE_RIJEN.filter(r =>
+    (!zoek || r.ver.toLowerCase().includes(zoek)) &&
+    (!code || r.code === code)
+  );
+
+  const tbl = g('tbl-ver');
+  if (!tbl) return;
+
+  if (!gefilterd.length) {
+    tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">Geen resultaten</td></tr>';
+    return;
+  }
+
+  tbl.innerHTML = gefilterd.map(r => {
+    const versch = r.h - r.v;
+    const c = versch > 0 ? GR : versch < 0 ? RD : '#888';
+    return `<tr>
+      <td>${r.ver}</td>
+      <td style="color:${GROEP_CLR[AB_GROEP[r.code]]||GY};font-weight:600">${r.code}</td>
+      <td class="tr" style="font-weight:600">${r.h > 0 ? r.h : '—'}</td>
+      <td class="tr" style="color:#888">${r.v > 0 ? r.v : '—'}</td>
+      <td class="tr" style="color:${c};font-weight:600">${r.v > 0 || r.h > 0 ? (versch > 0 ? '+' : '') + versch : '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Laad verenigingen als tab wordt geopend
+const origShowTab2 = window.showTab;
+window.showTab = function(id, el) {
+  origShowTab2(id, el);
+  if (id === 'verenigingen') {
+    const tbl = g('tbl-ver');
+    if (tbl && !tbl.innerHTML) laadVerenigingen();
+  }
+};
 const origShowTab = showTab;
 window.showTab = function(id, el) {
   origShowTab(id, el);
