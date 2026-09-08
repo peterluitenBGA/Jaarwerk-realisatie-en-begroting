@@ -423,15 +423,6 @@ function realTbl(id,rows,isUit){
 init();
 
 // ── ABONNEMENTEN TAB ───────────────────────────────────────
-const AB_VORIG = {
-  'M01':91,  'M01T':7,  'M02':255, 'M02T':13, 'M03':321, 'M03T':17,
-  'M04':252, 'M04T':15, 'M05':252, 'M05T':12, 'M06':130, 'M06T':10,
-  'M07':178, 'M07T':12, 'M22':158, 'M23':220, 'M24':13,  'M25':33,
-  'M26':183, 'M27':260, 'M28':184, 'MSM':2,   'MST':40,  'MSTT':12,
-  'MWK':32,  'SK10':14, 'SK5':13,  'YFM':28,  'YFMT':2,
-};
-const AB_VORIG_TOTAAL = 2759;
-
 const AB_OMSCHRIJVING = {
   'M01':'Senioren 1e abonnement',    'M01T':'Senioren 1e abo toeslag',
   'M02':'Senioren 2e abonnement',    'M02T':'Senioren 2e abo toeslag',
@@ -486,47 +477,66 @@ const GROEP_CLR = {
 
 async function laadAbonnementen() {
   const tbl = g('tbl-ab');
-  if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+  if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Seizoenen laden…</td></tr>';
 
   try {
-    // Haal ALLE abonnementen op met paginering (Supabase max 1000 per keer)
-    let alleData = [];
-    let offset = 0;
-    const pageSize = 1000;
-    while (true) {
-      const url = `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&limit=${pageSize}&offset=${offset}`;
-      const r = await fetch(url, {
-        headers: {
-          'apikey': SB_KEY,
-          'Authorization': `Bearer ${SB_KEY}`,
-          'Range-Unit': 'items',
-        }
-      });
-      if (!r.ok) {
-        const txt = await r.text();
-        throw new Error(`${r.status}: ${txt}`);
-      }
-      const data = await r.json();
-      alleData = alleData.concat(data);
-      console.log(`Abonnementen geladen: ${alleData.length} rijen (batch ${offset/pageSize+1})`);
-      if (data.length < pageSize) break; // laatste pagina
-      offset += pageSize;
-    }
+    // Haal beschikbare seizoenen op
+    const seizoenenR = await fetch(`${SB_URL}/rest/v1/abonnementen?select=seizoen&order=seizoen.desc`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const seizoenenData = await seizoenenR.json();
+    const seizoenen = [...new Set(seizoenenData.map(r=>r.seizoen).filter(Boolean))].sort().reverse();
 
-    if (!alleData.length) {
-      if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen abonnementen gevonden</td></tr>';
+    if (!seizoenen.length) {
+      if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen seizoenen gevonden</td></tr>';
       return;
     }
 
-    // Tel per code
-    const telMap = {};
-    alleData.forEach(row => {
-      const code = (row.abonnementscode || '').trim();
-      if (!code) return;
-      telMap[code] = (telMap[code] || 0) + 1;
-    });
+    const huidigSeizoen = seizoenen[0];
+    const vorigSeizoen  = seizoenen[1] || null;
 
-    renderAbonnementen(telMap);
+    // Update header labels
+    const ths = document.querySelectorAll('#tbl-ab')?.parentElement?.querySelectorAll('th');
+    if (ths && ths.length >= 4) {
+      ths[2].textContent = huidigSeizoen;
+      ths[3].textContent = vorigSeizoen || 'Vorig seizoen';
+    }
+
+    // Haal data op per seizoen met paginering
+    async function haalSeizoen(seizoen) {
+      let data = [], offset = 0;
+      while (true) {
+        const r = await fetch(
+          `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&seizoen=eq.${encodeURIComponent(seizoen)}&limit=1000&offset=${offset}`,
+          {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
+        );
+        const batch = await r.json();
+        data = data.concat(batch);
+        if (batch.length < 1000) break;
+        offset += 1000;
+      }
+      // Tel per code
+      const telMap = {};
+      data.forEach(row => {
+        const code = (row.abonnementscode || '').trim();
+        if (!code) return;
+        telMap[code] = (telMap[code] || 0) + 1;
+      });
+      return telMap;
+    }
+
+    if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Abonnementen laden…</td></tr>';
+
+    const [telHuidig, telVorig] = await Promise.all([
+      haalSeizoen(huidigSeizoen),
+      vorigSeizoen ? haalSeizoen(vorigSeizoen) : Promise.resolve({}),
+    ]);
+
+    console.log(`Huidig (${huidigSeizoen}):`, Object.values(telHuidig).reduce((s,n)=>s+n,0), 'abonnementen');
+    console.log(`Vorig (${vorigSeizoen}):`, Object.values(telVorig).reduce((s,n)=>s+n,0), 'abonnementen');
+
+    renderAbonnementen(telHuidig, telVorig, huidigSeizoen, vorigSeizoen);
+
   } catch(e) {
     console.error('Fout abonnementen:', e);
     const panel = g('p-abonnementen');
@@ -535,10 +545,13 @@ async function laadAbonnementen() {
     if (tbl) tbl.innerHTML = '';
   }
 }
+  }
+}
 
-function renderAbonnementen(telMap) {
-  const rows = Object.entries(telMap).sort((a,b) => a[0].localeCompare(b[0]));
+function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vorigSeizoen='Vorig') {
+  const rows = Object.entries(telHuidig).sort((a,b) => a[0].localeCompare(b[0]));
   const totaal = rows.reduce((s,[,n])=>s+n, 0);
+  const totaalVorig = Object.values(telVorig).reduce((s,n)=>s+n, 0);
 
   // KPI's
   const hr  = rows.filter(([c])=>AB_GROEP[c]==='Hardrijden').reduce((s,[,n])=>s+n,0);
@@ -547,11 +560,11 @@ function renderAbonnementen(telMap) {
   const sel = rows.filter(([c])=>AB_GROEP[c]==='Selecties').reduce((s,[,n])=>s+n,0);
 
   tx('ab-tot', totaal.toLocaleString('nl-NL'));
-  const totVersch = totaal - AB_VORIG_TOTAAL;
+  const totVersch = totaal - totaalVorig;
   const totKpi = g('ab-tot');
   if (totKpi) {
     const ks = totKpi.parentElement.querySelector('.ks');
-    if (ks) ks.textContent = `Vorig seizoen ${AB_VORIG_TOTAAL.toLocaleString('nl-NL')}`;
+    if (ks) ks.textContent = `Vorig ${vorigSeizoen}: ${totaalVorig.toLocaleString('nl-NL')}`;
     const kd = totKpi.parentElement.querySelector('.kd');
     if (kd) { kd.textContent = `${totVersch>0?'▲ +':'▼ '}${totVersch.toLocaleString('nl-NL')} vs. vorig`; kd.className='kd '+(totVersch>=0?'pos':'neg'); }
   }
@@ -560,19 +573,27 @@ function renderAbonnementen(telMap) {
   tx('ab-jg',  jg.toLocaleString('nl-NL'));
   tx('ab-sel', sel.toLocaleString('nl-NL'));
 
+  // Update tabel headers met seizoennamen
+  const tblHead = g('tbl-ab')?.closest('table')?.querySelector('thead');
+  if (tblHead) {
+    const ths = tblHead.querySelectorAll('th');
+    if (ths[2]) ths[2].textContent = huidigSeizoen;
+    if (ths[3]) ths[3].textContent = vorigSeizoen || 'Vorig seizoen';
+  }
+
   // Bar chart — huidig vs vorig seizoen
   mkChart('c-ab-bar', {type:'bar', data:{
     labels: rows.map(([c])=>c),
     datasets:[
       {
-        label:'2025-2026',
+        label: huidigSeizoen,
         data: rows.map(([,n])=>n),
         backgroundColor: rows.map(([c])=>GROEP_CLR[AB_GROEP[c]]||GY),
         borderRadius: 3,
       },
       {
-        label:'2024-2025',
-        data: rows.map(([c])=>AB_VORIG[c]||0),
+        label: vorigSeizoen||'Vorig seizoen',
+        data: rows.map(([c])=>telVorig[c]||0),
         backgroundColor: rows.map(([c])=>(GROEP_CLR[AB_GROEP[c]]||GY)+'55'),
         borderRadius: 3,
       }
@@ -606,14 +627,13 @@ function renderAbonnementen(telMap) {
              tooltip:{callbacks:{label:c=>`${c.label}: ${Math.round(c.raw/totaal*100)}%`}}}}});
 
   // Detail tabel
-  const totaalVorig = Object.values(AB_VORIG).reduce((s,n)=>s+n,0);
   g('tbl-ab').innerHTML = rows.map(([code, aantal])=>{
-    const pct   = Math.round(aantal/totaal*100);
-    const vorig = AB_VORIG[code]||0;
+    const pct    = Math.round(aantal/totaal*100);
+    const vorig  = telVorig[code]||0;
     const versch = aantal - vorig;
     const omschr = AB_OMSCHRIJVING[code]||'—';
-    const clr   = GROEP_CLR[AB_GROEP[code]]||GY;
-    const vclr  = versch>0?GR:versch<0?RD:'#888';
+    const clr    = GROEP_CLR[AB_GROEP[code]]||GY;
+    const vclr   = versch>0?GR:versch<0?RD:'#888';
     return `<tr>
       <td style="font-weight:600;color:${clr}">${code}</td>
       <td>${omschr}</td>
@@ -629,8 +649,8 @@ function renderAbonnementen(telMap) {
   `<tr class="tot">
     <td></td><td>Totaal</td>
     <td class="tr">${totaal.toLocaleString('nl-NL')}</td>
-    <td class="tr" style="color:#888">${AB_VORIG_TOTAAL.toLocaleString('nl-NL')}</td>
-    <td class="tr" style="color:${totaal>=AB_VORIG_TOTAAL?GR:RD};font-weight:700">${totaal>=AB_VORIG_TOTAAL?'+':''}${(totaal-AB_VORIG_TOTAAL).toLocaleString('nl-NL')}</td>
+    <td class="tr" style="color:#888">${totaalVorig>0?totaalVorig.toLocaleString('nl-NL'):'—'}</td>
+    <td class="tr" style="color:${totaal>=totaalVorig?GR:RD};font-weight:700">${totaalVorig>0?(totaal>=totaalVorig?'+':'')+((totaal-totaalVorig).toLocaleString('nl-NL')):'—'}</td>
     <td></td>
   </tr>`;
 }
