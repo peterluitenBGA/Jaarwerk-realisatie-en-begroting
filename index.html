@@ -717,6 +717,8 @@ async function laadVerenigingen() {
   if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
 
   try {
+    // Laad debiteuren voor naam matching
+    await laadDebiteuren();
     // Seizoenen ophalen
     const szR = await fetch(`${SB_URL}/rest/v1/abonnementen_seizoenen?select=seizoen&order=seizoen.desc&limit=100`, {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`, 'Prefer': 'count=none'}
@@ -766,12 +768,49 @@ async function laadVerenigingen() {
   }
 }
 
+// ── VERENIGING NAAM MATCHING via debiteuren tabel ─────────
+let DEBITEURENMAP = {}; // upload_naam -> kanonieke_naam
+
+async function laadDebiteuren() {
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/debiteuren?select=verenigingsnaam,afwijkende_naam,afkorting&limit=1000`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const data = await r.json();
+    DEBITEURENMAP = {};
+    data.forEach(d => {
+      const kanon = (d.verenigingsnaam || '').trim();
+      if (!kanon) return;
+      // 1. Kanonieke naam zelf
+      DEBITEURENMAP[kanon.toLowerCase()] = kanon;
+      // 2. Afkorting
+      if (d.afkorting) DEBITEURENMAP[d.afkorting.trim().toLowerCase()] = kanon;
+      // 3. Afwijkende naam
+      if (d.afwijkende_naam) DEBITEURENMAP[d.afwijkende_naam.trim().toLowerCase()] = kanon;
+    });
+    console.log('Debiteuren geladen:', Object.keys(DEBITEURENMAP).length, 'namen');
+  } catch(e) {
+    console.warn('Debiteuren niet geladen:', e.message);
+  }
+}
+
+function normaliseerNaam(naam) {
+  const key = (naam || '').trim().toLowerCase();
+  // Exacte match
+  if (DEBITEURENMAP[key]) return DEBITEURENMAP[key];
+  // Losse match: kanonieke naam bevat upload-waarde of andersom
+  for (const [k, v] of Object.entries(DEBITEURENMAP)) {
+    if (key.includes(k) || k.includes(key)) return v;
+  }
+  // Geen match — gebruik originele naam
+  return (naam || 'Onbekend').trim();
+}
+
 function telVereniging(data) {
-  // Geeft map: {vereniging: {code: aantal}}
   const map = {};
   data.forEach(r => {
-    const ver  = (r.vereniging || 'Onbekend').trim();
-    const code = (r.abonnementscode || '').trim();
+    const ver     = normaliseerNaam(r.vereniging);
+    const code    = (r.abonnementscode || '').trim();
     if (!map[ver]) map[ver] = {};
     map[ver][code] = (map[ver][code] || 0) + 1;
   });
