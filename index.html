@@ -773,36 +773,45 @@ let DEBITEURENMAP = {}; // upload_naam -> kanonieke_naam
 
 async function laadDebiteuren() {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/debiteuren?select=verenigingsnaam,afwijkende_naam,afkorting&limit=1000`, {
+    // Laad eerst de mapping tabel
+    const r1 = await fetch(`${SB_URL}/rest/v1/vereniging_mapping?select=upload_naam,verenigingsnaam&limit=1000`, {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
     });
-    const data = await r.json();
+    const mapping = await r1.json();
+    DEBITEURENMAP = {};
+    if (Array.isArray(mapping) && mapping.length > 0) {
+      mapping.forEach(m => {
+        const key = (m.upload_naam || '').trim().toLowerCase();
+        if (key) DEBITEURENMAP[key] = (m.verenigingsnaam || '').trim();
+      });
+      console.log('Mapping geladen:', Object.keys(DEBITEURENMAP).length, 'namen');
+      return;
+    }
+
+    // Fallback: debiteuren tabel
+    const r2 = await fetch(`${SB_URL}/rest/v1/debiteuren?select=verenigingsnaam,afwijkende_naam,afkorting&limit=1000`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const data = await r2.json();
     DEBITEURENMAP = {};
     data.forEach(d => {
       const kanon = (d.verenigingsnaam || '').trim();
       if (!kanon) return;
-      // 1. Kanonieke naam zelf
       DEBITEURENMAP[kanon.toLowerCase()] = kanon;
-      // 2. Afkorting
       if (d.afkorting) DEBITEURENMAP[d.afkorting.trim().toLowerCase()] = kanon;
-      // 3. Afwijkende naam
       if (d.afwijkende_naam) DEBITEURENMAP[d.afwijkende_naam.trim().toLowerCase()] = kanon;
     });
     console.log('Debiteuren geladen:', Object.keys(DEBITEURENMAP).length, 'namen');
   } catch(e) {
-    console.warn('Debiteuren niet geladen:', e.message);
+    console.warn('Mapping niet geladen:', e.message);
   }
 }
 
 function normaliseerNaam(naam) {
   const key = (naam || '').trim().toLowerCase();
-  // Exacte match
+  // 1. Exacte match op kanonieke naam
   if (DEBITEURENMAP[key]) return DEBITEURENMAP[key];
-  // Losse match: kanonieke naam bevat upload-waarde of andersom
-  for (const [k, v] of Object.entries(DEBITEURENMAP)) {
-    if (key.includes(k) || k.includes(key)) return v;
-  }
-  // Geen match — gebruik originele naam
+  // Geen losse match — gebruik originele naam
   return (naam || 'Onbekend').trim();
 }
 
