@@ -501,6 +501,83 @@ const GROEP_CLR = {
   'Overig':       GY,
 };
 
+// ── ACTIEVE ABONNEMENTEN per relatienr + abonnementscode ───
+// Telt per seizoen unieke combinaties van relatienr en abonnementscode:
+//  - normale rij of 'mutatie'     → de abonnementscode telt mee
+//  - 'mutatie' met 'intrekken'    → de in te trekken abonnementscode vervalt (zoals annulering)
+//  - 'annulering'                 → de abonnementscode vervalt; staat die code niet (meer) open
+//                                   voor dit relatienr, dan wordt gecorrigeerd naar de eerste
+//                                   melding van dit relatienr die nog open staat
+// Rijen met dezelfde timestamp (zelfde upload): eerst alle meldingen, daarna alle intrekkingen.
+function berekenActieveAbonnementen(rijen) {
+  const code = s => (s || '').trim().toUpperCase();
+  const soort = s => (s || '').trim().toLowerCase();
+  const gesorteerd = [...rijen].sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+  const actief = new Map();   // relatienr → Map(abonnementscode → {vereniging, volgorde})
+  let volgorde = 0;
+
+  const meld = (r) => {
+    const c = code(r.abonnementscode);
+    if (!c) return;
+    const rel = r.relatienr ?? ('id:' + r.id);
+    if (!actief.has(rel)) actief.set(rel, new Map());
+    const codes = actief.get(rel);
+    const bestaand = codes.get(c);
+    codes.set(c, {vereniging: r.vereniging, volgorde: bestaand ? bestaand.volgorde : volgorde++});
+  };
+  const trekIn = (rel, c, corrigeerNaarEerste) => {
+    const codes = actief.get(rel);
+    if (!codes || !codes.size) return;
+    if (codes.has(c)) { codes.delete(c); return; }
+    if (!corrigeerNaarEerste) return;
+    let eerste = null;
+    codes.forEach((v, k) => { if (eerste === null || v.volgorde < codes.get(eerste).volgorde) eerste = k; });
+    if (eerste !== null) codes.delete(eerste);
+  };
+
+  for (let i = 0; i < gesorteerd.length; ) {
+    let j = i;
+    while (j < gesorteerd.length && gesorteerd[j].timestamp === gesorteerd[i].timestamp) j++;
+    const groep = gesorteerd.slice(i, j);
+    i = j;
+
+    groep.filter(r => soort(r.mutatie) !== 'annulering').forEach(meld);
+    groep.forEach(r => {
+      const rel = r.relatienr ?? ('id:' + r.id);
+      if (soort(r.mutatie) === 'annulering') {
+        trekIn(rel, code(r.abonnementscode), true);
+      } else if (soort(r.mutatie) === 'mutatie') {
+        const intrek = code(r.intrekken);
+        if (intrek && intrek !== code(r.abonnementscode)) trekIn(rel, intrek, false);
+      }
+    });
+  }
+
+  const resultaat = [];
+  actief.forEach(codes => codes.forEach((v, c) => resultaat.push({abonnementscode: c, vereniging: v.vereniging})));
+  return resultaat;
+}
+
+// Haalt alle abonnementsrijen van een seizoen op en geeft de actieve abonnementen terug
+async function haalActieveAbonnementen(seizoen) {
+  let data = [], offset = 0;
+  while (true) {
+    const r = await fetch(
+      `${SB_URL}/rest/v1/abonnementen?select=id,relatienr,vereniging,abonnementscode,mutatie,intrekken,timestamp&seizoen=eq.${seizoen}&order=timestamp.asc,id.asc&limit=1000&offset=${offset}`,
+      {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
+    );
+    const batch = await r.json();
+    if (!Array.isArray(batch)) { console.error('Fout seizoen fetch:', batch); break; }
+    data = data.concat(batch);
+    console.log(`Seizoen ${seizoen}: ${data.length} rijen geladen`);
+    if (batch.length < 1000) break;
+    offset += 1000;
+  }
+  const actief = berekenActieveAbonnementen(data);
+  console.log(`Seizoen ${seizoen}: ${data.length} rijen → ${actief.length} actieve abonnementen`);
+  return actief;
+}
+
 async function laadAbonnementen() {
   const tbl = g('tbl-ab');
   if (tbl) tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">⏳ Seizoenen laden…</td></tr>';
@@ -531,24 +608,10 @@ async function laadAbonnementen() {
 
     // Haal data op per seizoen met paginering
     async function haalSeizoen(seizoen) {
-      let data = [], offset = 0;
-      while (true) {
-        const r = await fetch(
-          `${SB_URL}/rest/v1/abonnementen?select=abonnementscode&seizoen=eq.${seizoen}&limit=1000&offset=${offset}`,
-          {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
-        );
-        const batch = await r.json();
-        if (!Array.isArray(batch)) { console.error('Fout seizoen fetch:', batch); break; }
-        data = data.concat(batch);
-        console.log(`Seizoen ${seizoen}: ${data.length} rijen geladen`);
-        if (batch.length < 1000) break;
-        offset += 1000;
-      }
+      const actief = await haalActieveAbonnementen(seizoen);
       const telMap = {};
-      data.forEach(row => {
-        const code = (row.abonnementscode || '').trim();
-        if (!code) return;
-        telMap[code] = (telMap[code] || 0) + 1;
+      actief.forEach(row => {
+        telMap[row.abonnementscode] = (telMap[row.abonnementscode] || 0) + 1;
       });
       return telMap;
     }
@@ -734,29 +797,13 @@ async function laadVerenigingen() {
     const csEl = g('ver-cs'); if (csEl) csEl.textContent = `${VER_HUIDIG_SZ} vs. ${VER_VORIG_SZ}`;
 
     // Data ophalen per seizoen
-    async function haalData(seizoen) {
-      let data = [], offset = 0;
-      while (true) {
-        const r = await fetch(
-          `${SB_URL}/rest/v1/abonnementen?select=vereniging,abonnementscode&seizoen=eq.${seizoen}&limit=1000&offset=${offset}`,
-          {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
-        );
-        const batch = await r.json();
-        if (!Array.isArray(batch)) break;
-        data = data.concat(batch);
-        if (batch.length < 1000) break;
-        offset += 1000;
-      }
-      return data;
-    }
-
     const [dataH, dataV] = await Promise.all([
-      VER_HUIDIG_SZ ? haalData(VER_HUIDIG_SZ) : Promise.resolve([]),
-      VER_VORIG_SZ  ? haalData(VER_VORIG_SZ)  : Promise.resolve([]),
+      VER_HUIDIG_SZ ? haalActieveAbonnementen(VER_HUIDIG_SZ) : Promise.resolve([]),
+      VER_VORIG_SZ  ? haalActieveAbonnementen(VER_VORIG_SZ)  : Promise.resolve([]),
     ]);
 
-    console.log('Huidig data:', dataH.length, 'rijen');
-    console.log('Vorig data:', dataV.length, 'rijen');
+    console.log('Huidig data:', dataH.length, 'actieve abonnementen');
+    console.log('Vorig data:', dataV.length, 'actieve abonnementen');
 
     VER_DATA_HUIDIG = dataH;
     VER_DATA_VORIG  = dataV;
