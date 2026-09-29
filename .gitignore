@@ -1,0 +1,4 @@
+# Alleen het dashboard wordt gepubliceerd; al het andere blijft lokaal
+*
+!index.html
+!.gitignore
