@@ -83,6 +83,7 @@ tr:hover:not(.tot) td{background:#f0f6ff}
   <button class="tab"     onclick="showTab('realisatie',this)">Realisatie vs. begroting</button>
   <button class="tab"     onclick="showTab('abonnementen',this)">Abonnementen</button>
   <button class="tab"     onclick="showTab('verenigingen',this)">Abonnementen verenigingen</button>
+  <button class="tab"     onclick="showTab('facturering',this)">Facturering</button>
 </div>
 <div class="wrap" id="main-wrap">
   <div class="loading"><div class="spinner"></div> Data laden uit Supabase…</div>
@@ -264,6 +265,27 @@ function bouwContent(){
         <th class="tr" id="th-vor">Vorig</th>
         <th class="tr">Verschil</th>
       </tr></thead><tbody id="tbl-ver"></tbody></table>
+    </div>
+  </div>
+  <div id="p-facturering" class="pnl">
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi rd"><div class="kl">Nog te betalen</div><div class="kv" id="fa-betalen">—</div><div class="ks">Inkoop · JE-tarief</div></div>
+      <div class="kpi gr"><div class="kl">Nog te ontvangen</div><div class="kv" id="fa-ontvangen">—</div><div class="ks">Verkoop · BGA-tarief</div></div>
+      <div class="kpi bl"><div class="kl">Saldo</div><div class="kv" id="fa-saldo">—</div><div class="ks" id="fa-aantal">Ontvangen − betalen</div></div>
+    </div>
+    <div class="card"><div class="ct">Totalen per type abonnement</div><div class="cs" id="fa-cs">Actieve abonnementen van het seizoen, berekend door genereerFacturering()</div>
+      <div style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="fa-seizoen" style="border:.5px solid #e0e0e0;border-radius:5px;padding:6px 10px;font-size:12px;outline:none" onchange="renderFacturering()"></select>
+        <button class="btn-ref" onclick="laadFacturering()">🔄 Vernieuwen</button>
+      </div>
+      <div id="fa-waarschuwing"></div>
+      <table><thead><tr>
+        <th>Tariefcode</th>
+        <th class="tr">Aantal</th>
+        <th class="tr">Nog te betalen (inkoop)</th>
+        <th class="tr">Nog te ontvangen (verkoop)</th>
+        <th class="tr">Saldo</th>
+      </tr></thead><tbody id="tbl-fa"></tbody></table>
     </div>
   </div>
   <div id="p-abonnementen" class="pnl">
@@ -968,6 +990,95 @@ function filterVerenigingen() {
     </tr>`;
   }).join('');
 }
+
+// ── FACTURERING: totalen per tariefcode ───────────────────────
+// Bron: tabel facturering_totalen, gevuld door genereerFacturering() (BGA_Facturering).
+// totaal_je = inkoop → nog te betalen · totaal_bga = verkoop → nog te ontvangen
+let FA_DATA = [];
+const fmt2 = n => '€ ' + Number(n || 0).toLocaleString('nl-NL', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const esc  = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function laadFacturering() {
+  const tbl = g('tbl-fa');
+  if (tbl) tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/facturering_totalen?select=*&order=seizoen.desc,tariefcode.asc&limit=1000`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const data = await r.json();
+    if (!r.ok || !Array.isArray(data)) throw new Error((data && data.message) || ('status ' + r.status));
+    FA_DATA = data;
+    const sel = g('fa-seizoen');
+    const gekozen = sel.value;
+    const seizoenen = [...new Set(data.map(d => d.seizoen))];
+    sel.innerHTML = seizoenen.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+    if (gekozen && seizoenen.includes(gekozen)) sel.value = gekozen;
+    renderFacturering();
+  } catch(e) {
+    console.error('Fout facturering:', e);
+    if (tbl) tbl.innerHTML = `<tr><td colspan="5" style="padding:20px;color:#A32D2D">❌ Fout bij laden facturering: ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderFacturering() {
+  const tbl = g('tbl-fa');
+  if (!tbl) return;
+  const rijen = FA_DATA.filter(d => d.seizoen === g('fa-seizoen').value);
+  g('fa-waarschuwing').innerHTML = '';
+
+  if (!rijen.length) {
+    ['fa-betalen', 'fa-ontvangen', 'fa-saldo'].forEach(id => tx(id, '—'));
+    tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">Nog geen totalen. Voer <b>genereerFacturering()</b> uit in Apps Script (BGA_Facturering).</td></tr>';
+    return;
+  }
+
+  const som = k => rijen.reduce((s, d) => s + Number(d[k] || 0), 0);
+  const betalen = som('totaal_je'), ontvangen = som('totaal_bga');
+  const aantal = som('aantal'), zonder = som('aantal_zonder_tarief');
+  const saldo = ontvangen - betalen;
+
+  tx('fa-betalen', fmt2(betalen));
+  tx('fa-ontvangen', fmt2(ontvangen));
+  tx('fa-saldo', fmt2(saldo));
+  const saldoEl = g('fa-saldo');
+  if (saldoEl) saldoEl.style.color = saldo < 0 ? RD : '';
+  tx('fa-aantal', `Ontvangen − betalen · ${aantal.toLocaleString('nl-NL')} abonnementen`);
+
+  const bijgewerkt = rijen.map(d => d.bijgewerkt_op).filter(Boolean).sort().pop();
+  tx('fa-cs', 'Actieve abonnementen van het seizoen' + (bijgewerkt ? ` · bijgewerkt ${new Date(bijgewerkt).toLocaleString('nl-NL')}` : ''));
+
+  if (zonder > 0) {
+    g('fa-waarschuwing').innerHTML = `<div style="background:#fffbeb;border:1px solid #BA7517;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#78350f">⚠️ ${zonder.toLocaleString('nl-NL')} abonnement(en) hebben een tariefcode zonder tarief in <b>artikelen</b> (bijv. vervallen codes) en staan niet in de bedragen.</div>`;
+  }
+
+  tbl.innerHTML = rijen.map(d => {
+    const s = Number(d.totaal_bga || 0) - Number(d.totaal_je || 0);
+    const z = d.aantal_zonder_tarief > 0 ? ` <span style="color:#A32D2D;font-size:10px">(${d.aantal_zonder_tarief} zonder tarief)</span>` : '';
+    return `<tr>
+      <td style="font-weight:600">${esc(d.tariefcode)}</td>
+      <td class="tr">${Number(d.aantal).toLocaleString('nl-NL')}${z}</td>
+      <td class="tr">${fmt2(d.totaal_je)}</td>
+      <td class="tr">${fmt2(d.totaal_bga)}</td>
+      <td class="tr" style="color:${s < 0 ? RD : '#888'}">${fmt2(s)}</td>
+    </tr>`;
+  }).join('') + `<tr class="tot">
+      <td>Totaal</td>
+      <td class="tr">${aantal.toLocaleString('nl-NL')}</td>
+      <td class="tr">${fmt2(betalen)}</td>
+      <td class="tr">${fmt2(ontvangen)}</td>
+      <td class="tr" style="color:${saldo < 0 ? RD : 'inherit'}">${fmt2(saldo)}</td>
+    </tr>`;
+}
+
+// Laad facturering als tab wordt geopend
+const origShowTabFa = window.showTab;
+window.showTab = function(id, el) {
+  origShowTabFa(id, el);
+  if (id === 'facturering') {
+    const tbl = g('tbl-fa');
+    if (tbl && !tbl.innerHTML) laadFacturering();
+  }
+};
 
 // Laad verenigingen als tab wordt geopend
 const origShowTab2 = window.showTab;
