@@ -1032,7 +1032,8 @@ function renderFacturering() {
 
   const som = k => rijen.reduce((s, d) => s + Number(d[k] || 0), 0);
   const betalen = som('totaal_je'), ontvangen = som('totaal_bga');
-  const aantal = som('aantal'), zonder = som('aantal_zonder_tarief');
+  const zonder = som('aantal_zonder_tarief');
+  const aantal = rijen.filter(d => d.tariefcode !== 'Pas_nieuw').reduce((s, d) => s + Number(d.aantal || 0), 0);   // passen zijn geen abonnementen
   const saldo = ontvangen - betalen;
 
   tx('fa-betalen', fmt2(betalen));
@@ -1071,18 +1072,20 @@ function renderFacturering() {
     </tr>`;
   }).join('') + `<tr class="tot">
       <td>Totaal</td>
-      <td class="tr">${aantal.toLocaleString('nl-NL')}</td>
+      <td class="tr">${som('aantal').toLocaleString('nl-NL')}</td>
       <td class="tr">${fmt2(betalen)}</td>
       <td class="tr">${fmt2(ontvangen)}</td>
       <td class="tr" style="color:${saldo < 0 ? RD : 'inherit'}">${fmt2(saldo)}</td>
     </tr>`;
 }
 
-// Per vereniging per abonnementscode, uit facturering_regels (één regel per actief abonnement)
+// Per vereniging per abonnementscode, uit facturering_regels (één regel per actief abonnement,
+// plus een aparte regel 'pas_nieuw' per persoon met een nieuwe JE-pas)
+const FA_PAS = 'Nieuwe JE-pas';
 async function laadFactureringRegels() {
   let data = [], offset = 0;
   while (true) {
-    const r = await fetch(`${SB_URL}/rest/v1/facturering_regels?select=seizoen,vereniging,abonnementscode,tariefcode,tarief_je,tarief_bga&order=seizoen.desc,vereniging.asc&limit=1000&offset=${offset}`, {
+    const r = await fetch(`${SB_URL}/rest/v1/facturering_regels?select=seizoen,vereniging,regelsoort,abonnementscode,tariefcode,tarief_je,tarief_bga&order=seizoen.desc,vereniging.asc&limit=1000&offset=${offset}`, {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
     });
     const batch = await r.json();
@@ -1120,7 +1123,7 @@ async function renderFactureringPerVereniging() {
   const perVer = new Map();   // vereniging → Map(abonnementscode → totalen)
   FA_REGELS.filter(r => r.seizoen === seizoen).forEach(r => {
     const ver  = (r.vereniging || 'Onbekend').trim();
-    const code = (r.abonnementscode || '—').trim().toUpperCase();
+    const code = r.regelsoort === 'pas_nieuw' ? FA_PAS : (r.abonnementscode || '—').trim().toUpperCase();
     if (!perVer.has(ver)) perVer.set(ver, new Map());
     const codes = perVer.get(ver);
     if (!codes.has(code)) codes.set(code, {aantal: 0, zonder: 0, je: 0, bga: 0});
@@ -1142,9 +1145,10 @@ async function renderFactureringPerVereniging() {
   [...perVer.keys()].sort((a, b) => a.localeCompare(b, 'nl')).forEach(ver => {
     const codes = perVer.get(ver);
     const sub = {aantal: 0, je: 0, bga: 0};
-    [...codes.keys()].sort().forEach((code, i) => {
+    [...codes.keys()].sort((a, b) => (a === FA_PAS) - (b === FA_PAS) || a.localeCompare(b)).forEach((code, i) => {
       const t = codes.get(code);
-      sub.aantal += t.aantal; sub.je += t.je; sub.bga += t.bga;
+      if (code !== FA_PAS) sub.aantal += t.aantal;   // aantal = abonnementen; bedragen incl. passen
+      sub.je += t.je; sub.bga += t.bga;
       const z = t.zonder > 0 ? ` <span style="color:#A32D2D;font-size:10px">(${t.zonder} zonder tarief)</span>` : '';
       html += `<tr>
       <td style="font-weight:600">${i === 0 ? esc(ver) : ''}</td>
