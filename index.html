@@ -541,7 +541,8 @@ function berekenActieveAbonnementen(rijen) {
     if (!actief.has(rel)) actief.set(rel, new Map());
     const codes = actief.get(rel);
     const bestaand = codes.get(c);
-    codes.set(c, {vereniging: r.vereniging, volgorde: bestaand ? bestaand.volgorde : volgorde++});
+    codes.set(c, {vereniging: r.vereniging, je_pasnummer: r.je_pasnummer, nieuw_pasnummer: r.nieuw_pasnummer,
+                  volgorde: bestaand ? bestaand.volgorde : volgorde++});
   };
   const trekIn = (rel, c, corrigeerNaarEerste) => {
     const codes = actief.get(rel);
@@ -572,7 +573,8 @@ function berekenActieveAbonnementen(rijen) {
   }
 
   const resultaat = [];
-  actief.forEach(codes => codes.forEach((v, c) => resultaat.push({abonnementscode: c, vereniging: v.vereniging})));
+  actief.forEach((codes, rel) => codes.forEach((v, c) => resultaat.push({abonnementscode: c, vereniging: v.vereniging,
+    relatienr: rel, je_pasnummer: v.je_pasnummer, nieuw_pasnummer: v.nieuw_pasnummer})));
   return resultaat;
 }
 
@@ -581,7 +583,7 @@ async function haalActieveAbonnementen(seizoen) {
   let data = [], offset = 0;
   while (true) {
     const r = await fetch(
-      `${SB_URL}/rest/v1/abonnementen?select=id,relatienr,vereniging,abonnementscode,mutatie,intrekken,timestamp&seizoen=eq.${seizoen}&order=timestamp.asc,id.asc&limit=1000&offset=${offset}`,
+      `${SB_URL}/rest/v1/abonnementen?select=id,relatienr,vereniging,abonnementscode,mutatie,intrekken,timestamp,je_pasnummer,nieuw_pasnummer&seizoen=eq.${seizoen}&order=timestamp.asc,id.asc&limit=1000&offset=${offset}`,
       {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}}
     );
     const batch = await r.json();
@@ -891,11 +893,30 @@ function telVereniging(data) {
   return map;
 }
 
+// Nieuwe JE-passen per vereniging: één per persoon met een actief abonnement en een leeg je_pasnummer
+// (upload NIEUW of leeg; niet PAS) — zelfde regel als maakPasRegels() in BGA_Facturering (geen codes 98/99)
+const VER_PAS = 'Nieuwe JE-pas';
+function telPassen(data) {
+  const map = {}, gezien = new Set();
+  data.forEach(r => {
+    const code = (r.abonnementscode || '').trim().toUpperCase();
+    if (!code || (code.endsWith('T') && code !== 'MST')) return;
+    if (String(r.je_pasnummer ?? '').trim() !== '' || r.nieuw_pasnummer === 'p') return;
+    if (gezien.has(r.relatienr)) return;
+    gezien.add(r.relatienr);
+    const ver = normaliseerNaam(r.vereniging);
+    map[ver] = (map[ver] || 0) + 1;
+  });
+  return map;
+}
+
 let VER_ALLE_RIJEN = [];
 
 function renderVerenigingen() {
   const mapH = telVereniging(VER_DATA_HUIDIG);
   const mapV = telVereniging(VER_DATA_VORIG);
+  const pasH = telPassen(VER_DATA_HUIDIG);
+  const pasV = telPassen(VER_DATA_VORIG);
 
   // Alle unieke verenigingen en codes
   const alleVer  = [...new Set([...Object.keys(mapH), ...Object.keys(mapV)])].sort();
@@ -903,6 +924,7 @@ function renderVerenigingen() {
     ...VER_DATA_HUIDIG.map(r=>(r.abonnementscode||'').trim()),
     ...VER_DATA_VORIG.map(r=>(r.abonnementscode||'').trim()),
   ].filter(Boolean))].sort();
+  const heeftPassen = Object.keys(pasH).length > 0 || Object.keys(pasV).length > 0;
 
   // KPI's
   const totH = VER_DATA_HUIDIG.length;
@@ -939,7 +961,8 @@ function renderVerenigingen() {
   if (sel) {
     const huidig = sel.value;
     sel.innerHTML = '<option value="">Alle codes</option>' +
-      alleCodes.map(c=>`<option value="${c}" ${c===huidig?'selected':''}>${c} — ${AB_OMSCHRIJVING[c]||''}</option>`).join('');
+      alleCodes.map(c=>`<option value="${c}" ${c===huidig?'selected':''}>${c} — ${AB_OMSCHRIJVING[c]||''}</option>`).join('') +
+      (heeftPassen ? `<option value="${VER_PAS}" ${huidig===VER_PAS?'selected':''}>${VER_PAS}</option>` : '');
   }
 
   // Bouw alle rijen
@@ -952,6 +975,9 @@ function renderVerenigingen() {
       if (h === 0 && v === 0) return;
       VER_ALLE_RIJEN.push({ver, code, h, v});
     });
+    // Passen onderaan per vereniging; geen abonnementen, dus niet in KPI's en grafiek
+    const ph = pasH[ver] || 0, pv = pasV[ver] || 0;
+    if (ph > 0 || pv > 0) VER_ALLE_RIJEN.push({ver, code: VER_PAS, h: ph, v: pv, pas: true});
   });
 
   filterVerenigingen();
@@ -979,7 +1005,7 @@ function filterVerenigingen() {
     const c = versch > 0 ? GR : versch < 0 ? RD : '#888';
     return `<tr>
       <td>${r.ver}</td>
-      <td style="color:${GROEP_CLR[AB_GROEP[r.code]]||GY};font-weight:600">${r.code}</td>
+      <td style="color:${r.pas ? '#888' : GROEP_CLR[AB_GROEP[r.code]]||GY};font-weight:600${r.pas ? ';font-style:italic' : ''}">${r.code}</td>
       <td class="tr" style="font-weight:600">${r.h > 0 ? r.h : '—'}</td>
       <td class="tr" style="color:#888">${r.v > 0 ? r.v : '—'}</td>
       <td class="tr" style="color:${c};font-weight:600">${r.v > 0 || r.h > 0 ? (versch > 0 ? '+' : '') + versch : '—'}</td>
