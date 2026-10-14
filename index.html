@@ -346,6 +346,12 @@ function bouwContent(){
         <th style="min-width:100px">Aandeel</th>
       </tr></thead><tbody id="tbl-ab"></tbody></table>
     </div>
+    <div class="card"><div class="ct">Relatienr-wijzigingen en heraanvragen</div><div class="cs" id="ab-mel-cs">Nieuwe aanvragen die na een annulering opnieuw zijn verwerkt (mededeling in mutatie)</div>
+      <table><thead><tr>
+        <th>Datum</th><th>Vereniging</th><th>Naam</th><th>Pasnummer</th><th>Code</th>
+        <th>Relatienr</th><th>Mededeling</th>
+      </tr></thead><tbody id="tbl-ab-mel"></tbody></table>
+    </div>
     <div class="card"><div class="ct">Jeugdschaatsen</div><div class="cs">Aparte tabel jeugdschaatsen · M10 t/m M13 · niet meegeteld in de aantallen hierboven</div>
       <div class="kpis" style="grid-template-columns:repeat(2,1fr);margin-bottom:12px">
         <div class="kpi am"><div class="kl">Jeugdschaatsen</div><div class="kv" id="ab-jg">—</div><div class="ks"></div><div class="kd"></div></div>
@@ -705,6 +711,7 @@ async function laadAbonnementen() {
 
     renderAbonnementen(telHuidig, telVorig, huidigSeizoen, vorigSeizoen);
     renderJeugdschaatsen(jeugdHuidig, jeugdVorig, huidigSeizoen, vorigSeizoen);
+    laadMededelingen(huidigSeizoen).catch(e => console.error('Fout mededelingen:', e));
 
   } catch(e) {
     console.error('Fout abonnementen:', e);
@@ -877,6 +884,58 @@ function renderJeugdschaatsen(huidig, vorig, huidigSeizoen, vorigSeizoen) {
   const omschr = c => /T$/.test(c) ? `${AB_OMSCHRIJVING[c.slice(0, -1)] || ''} (begeleider)`.trim() : (AB_OMSCHRIJVING[c] || '—');
   g('tbl-ab-jg').innerHTML = codes.map(c => rij(c, omschr(c), tH[c] || 0, tV[c] || 0)).join('')
     + rij('', 'Totaal', huidig.length, vorig.length, ' class="tot"');
+}
+
+// ── RELATIENR-WIJZIGINGEN EN HERAANVRAGEN ──────────────────
+// bga_upload zet deze mededelingen in mutatie bij een nieuwe aanvraag die na een
+// annulering opnieuw is toegestaan. Bij "relatienr gewijzigd" wordt het oude relatienr
+// opgezocht via dezelfde je_pasnummer + abonnementscode.
+const MED_RELATIENR = 'relatienr gewijzigd';
+const MED_HERAANVRAAG = 'aanvraag eerder verwerkt en geannuleerd';
+
+async function sbGet(pad) {
+  const r = await fetch(`${SB_URL}/rest/v1/${pad}`, {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}});
+  const data = await r.json();
+  if (!Array.isArray(data)) throw new Error(data?.message || 'onverwacht antwoord');
+  return data;
+}
+
+async function laadMededelingen(seizoen) {
+  const tbl = g('tbl-ab-mel');
+  if (!tbl) return;
+  const rijen = await sbGet(`abonnementen?select=timestamp,vereniging,relatienr,je_pasnummer,voornaam,tussen,achternaam,abonnementscode,mutatie` +
+    `&seizoen=eq.${seizoen}&mutatie=in.(${encodeURIComponent(`"${MED_RELATIENR}","${MED_HERAANVRAAG}"`)})&order=timestamp.desc&limit=1000`);
+
+  // Oude relatienrs bij relatienr-wijzigingen: eerdere aanvragen met hetzelfde pasnummer + code
+  const passen = [...new Set(rijen.filter(r => r.mutatie === MED_RELATIENR && r.je_pasnummer != null).map(r => r.je_pasnummer))];
+  const oudRel = {};
+  if (passen.length) {
+    const eerder = await sbGet(`abonnementen?select=relatienr,je_pasnummer,abonnementscode,mutatie` +
+      `&seizoen=eq.${seizoen}&je_pasnummer=in.(${passen.join(',')})&mutatie=is.null`);
+    eerder.forEach(e => {
+      const k = `${e.je_pasnummer}_${e.abonnementscode}`;
+      (oudRel[k] = oudRel[k] || new Set()).add(String(e.relatienr));
+    });
+  }
+
+  const nGew = rijen.filter(r => r.mutatie === MED_RELATIENR).length;
+  tx('ab-mel-cs', `Seizoen ${seizoen} · ${nGew} relatienr gewijzigd · ${rijen.length - nGew} opnieuw aangevraagd na annulering`);
+  if (!rijen.length) {
+    tbl.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:#888">Geen relatienr-wijzigingen of heraanvragen dit seizoen</td></tr>';
+    return;
+  }
+  const datum = ts => { const m = String(ts || '').match(/^(\d{4})-?(\d{2})-?(\d{2})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : esc(ts); };
+  tbl.innerHTML = rijen.map(r => {
+    const naam = [r.voornaam, r.tussen, r.achternaam].filter(Boolean).join(' ');
+    const oud = r.mutatie === MED_RELATIENR
+      ? [...(oudRel[`${r.je_pasnummer}_${r.abonnementscode}`] || [])].filter(x => x !== String(r.relatienr))
+      : [];
+    const rel = oud.length ? `<span style="color:#888;text-decoration:line-through">${esc(oud.join(', '))}</span> → ${esc(r.relatienr)}` : esc(r.relatienr);
+    const kleur = r.mutatie === MED_RELATIENR ? BL : AM;
+    return `<tr><td>${datum(r.timestamp)}</td><td>${esc(r.vereniging)}</td><td>${esc(naam)}</td>
+      <td>${esc(r.je_pasnummer ?? 'NIEUW')}</td><td style="font-weight:600">${esc(r.abonnementscode)}</td>
+      <td>${rel}</td><td style="color:${kleur};font-weight:600">${esc(r.mutatie)}</td></tr>`;
+  }).join('');
 }
 
 // ── VERENIGINGEN TAB ───────────────────────────────────────
