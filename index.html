@@ -893,7 +893,7 @@ function renderJeugdschaatsen(huidig, vorig, huidigSeizoen, vorigSeizoen) {
 const MED_RELATIENR = 'relatienr gewijzigd';
 const MED_HERAANVRAAG = 'aanvraag eerder verwerkt en geannuleerd';
 
-async function sbGet(pad) {
+async function sbGetPad(pad) {
   const r = await fetch(`${SB_URL}/rest/v1/${pad}`, {headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}});
   const data = await r.json();
   if (!Array.isArray(data)) throw new Error(data?.message || 'onverwacht antwoord');
@@ -903,14 +903,14 @@ async function sbGet(pad) {
 async function laadMededelingen(seizoen) {
   const tbl = g('tbl-ab-mel');
   if (!tbl) return;
-  const rijen = await sbGet(`abonnementen?select=timestamp,vereniging,relatienr,je_pasnummer,voornaam,tussen,achternaam,abonnementscode,mutatie` +
+  const rijen = await sbGetPad(`abonnementen?select=timestamp,vereniging,relatienr,je_pasnummer,voornaam,tussen,achternaam,abonnementscode,mutatie` +
     `&seizoen=eq.${seizoen}&mutatie=in.(${encodeURIComponent(`"${MED_RELATIENR}","${MED_HERAANVRAAG}"`)})&order=timestamp.desc&limit=1000`);
 
   // Oude relatienrs bij relatienr-wijzigingen: eerdere aanvragen met hetzelfde pasnummer + code
   const passen = [...new Set(rijen.filter(r => r.mutatie === MED_RELATIENR && r.je_pasnummer != null).map(r => r.je_pasnummer))];
   const oudRel = {};
   if (passen.length) {
-    const eerder = await sbGet(`abonnementen?select=relatienr,je_pasnummer,abonnementscode,mutatie` +
+    const eerder = await sbGetPad(`abonnementen?select=relatienr,je_pasnummer,abonnementscode,mutatie` +
       `&seizoen=eq.${seizoen}&je_pasnummer=in.(${passen.join(',')})&mutatie=is.null`);
     eerder.forEach(e => {
       const k = `${e.je_pasnummer}_${e.abonnementscode}`;
