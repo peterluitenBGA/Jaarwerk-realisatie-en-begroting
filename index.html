@@ -328,7 +328,7 @@ function bouwContent(){
       <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div><div class="kd"></div></div>
       <div class="kpi gr"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M21 t/m M28</div><div class="kd"></div></div>
       <div class="kpi rd"><div class="kl">Selecties</div><div class="kv" id="ab-sel">—</div><div class="ks">MST, MWK, SK, YFM</div><div class="kd"></div></div>
-      <div class="kpi ij"><div class="kl">Shortrack toegang hal</div><div class="kv" id="ab-sth">—</div><div class="ks">M40 t/m M43</div></div>
+      <div class="kpi ij"><div class="kl">Shortrack toegang hal</div><div class="kv" id="ab-sth">—</div><div class="ks">M40 t/m M50</div><div class="kd"></div></div>
     </div>
     <div class="g2">
       <div class="card"><div class="ct">Aantallen per abonnementscode</div><div class="cs">Totaal per code</div>
@@ -568,8 +568,10 @@ const AB_GROEP = {
   'M12':'Jeugd','M13':'Jeugd',
   'MSM':'Selecties','SNA':'Selecties','MST':'Selecties','MSTT':'Selecties',
   'MWK':'Selecties','SK10':'Selecties','SK5':'Selecties',
-  'YFM':'Selecties','YFMT':'Selecties',  'M40':'Shortrack toegang hal','M41':'Shortrack toegang hal','M42':'Shortrack toegang hal','M43':'Shortrack toegang hal',
+  'YFM':'Selecties','YFMT':'Selecties',
 };
+
+for (let n = 40; n <= 50; n++) for (const t of ['', 'T']) AB_GROEP['M' + n + t] = 'Shortrack toegang hal';
 
 const GROEP_CLR = {
   'Hardrijden':   BL,
@@ -745,18 +747,21 @@ function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vori
   tx('ab-hr',  hr.toLocaleString('nl-NL'));
   tx('ab-ts',  ts.toLocaleString('nl-NL'));
   tx('ab-sel', sel.toLocaleString('nl-NL'));
-  tx('ab-sth', rows.filter(([c])=>AB_GROEP[c]==='Shortrack toegang hal').reduce((s,[,n])=>s+n,0).toLocaleString('nl-NL'));
+  const sth = rows.filter(([c])=>AB_GROEP[c]==='Shortrack toegang hal').reduce((s,[,n])=>s+n,0);
+  tx('ab-sth', sth.toLocaleString('nl-NL'));
 
   // Vorig seizoen per groep
   const hrV  = Object.entries(telVorig).filter(([c])=>AB_GROEP[c]==='Hardrijden').reduce((s,[,n])=>s+n,0);
   const tsV  = Object.entries(telVorig).filter(([c])=>AB_GROEP[c]==='Toerschaatsen').reduce((s,[,n])=>s+n,0);
   const selV = Object.entries(telVorig).filter(([c])=>AB_GROEP[c]==='Selecties').reduce((s,[,n])=>s+n,0);
+  const sthV = Object.entries(telVorig).filter(([c])=>AB_GROEP[c]==='Shortrack toegang hal').reduce((s,[,n])=>s+n,0);
 
   // Update ks en kd voor elke groep KPI
   [
     ['ab-hr',  hr,  hrV],
     ['ab-ts',  ts,  tsV],
     ['ab-sel', sel, selV],
+    ['ab-sth', sth, sthV],
   ].forEach(([id, huidig, vorig]) => {
     const el = g(id);
     if (!el) return;
