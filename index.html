@@ -34,7 +34,7 @@ select.bj{border:1px solid #0F6E56;border-radius:5px;padding:6px 12px;font-size:
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:9px;margin-bottom:18px}
 .kpi{background:#fff;border-radius:8px;padding:13px 15px;border:.5px solid #e0e0e0;position:relative;overflow:hidden}
 .kpi::after{content:'';position:absolute;top:0;left:0;right:0;height:3px}
-.kpi.bl::after{background:#003D7C}.kpi.gr::after{background:#0F6E56}.kpi.rd::after{background:#A32D2D}.kpi.am::after{background:#BA7517}
+.kpi.bl::after{background:#003D7C}.kpi.gr::after{background:#0F6E56}.kpi.rd::after{background:#A32D2D}.kpi.am::after{background:#BA7517}.kpi.ij::after{background:#7FDBCA}
 .kl{font-size:11px;color:#888;margin-bottom:4px}.kv{font-size:19px;font-weight:600}
 .ks{font-size:11px;color:#bbb;margin-top:2px}.kd{font-size:11px;font-weight:600;margin-top:2px}
 .pos{color:#0F6E56}.neg{color:#A32D2D}
@@ -323,11 +323,12 @@ function bouwContent(){
     </div>
   </div>
   <div id="p-abonnementen" class="pnl">
-    <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpis" style="grid-template-columns:repeat(5,1fr)">
       <div class="kpi bl"><div class="kl">Totaal</div><div class="kv" id="ab-tot">—</div><div class="ks">Alle abonnementen</div><div class="kd"></div></div>
       <div class="kpi bl"><div class="kl">Hardrijden</div><div class="kv" id="ab-hr">—</div><div class="ks">M01 t/m M07</div><div class="kd"></div></div>
       <div class="kpi gr"><div class="kl">Toerschaatsen</div><div class="kv" id="ab-ts">—</div><div class="ks">M21 t/m M28</div><div class="kd"></div></div>
       <div class="kpi rd"><div class="kl">Selecties</div><div class="kv" id="ab-sel">—</div><div class="ks">MST, MWK, SK, YFM</div><div class="kd"></div></div>
+      <div class="kpi ij"><div class="kl">Shortrack toegang hal</div><div class="kv" id="ab-sth">—</div><div class="ks">M40 t/m M43</div></div>
     </div>
     <div class="g2">
       <div class="card"><div class="ct">Aantallen per abonnementscode</div><div class="cs">Totaal per code</div>
@@ -567,14 +568,14 @@ const AB_GROEP = {
   'M12':'Jeugd','M13':'Jeugd',
   'MSM':'Selecties','SNA':'Selecties','MST':'Selecties','MSTT':'Selecties',
   'MWK':'Selecties','SK10':'Selecties','SK5':'Selecties',
-  'YFM':'Selecties','YFMT':'Selecties',
+  'YFM':'Selecties','YFMT':'Selecties',  'M40':'Shortrack toegang hal','M41':'Shortrack toegang hal','M42':'Shortrack toegang hal','M43':'Shortrack toegang hal',
 };
 
 const GROEP_CLR = {
   'Hardrijden':   BL,
   'Toerschaatsen': GR,
   'Jeugd':        AM,
-  'Selecties':    RD,
+  'Selecties':    RD,  'Shortrack toegang hal': IJS,
   'Overig':       GY,
 };
 
@@ -744,6 +745,7 @@ function renderAbonnementen(telHuidig, telVorig={}, huidigSeizoen='Huidig', vori
   tx('ab-hr',  hr.toLocaleString('nl-NL'));
   tx('ab-ts',  ts.toLocaleString('nl-NL'));
   tx('ab-sel', sel.toLocaleString('nl-NL'));
+  tx('ab-sth', rows.filter(([c])=>AB_GROEP[c]==='Shortrack toegang hal').reduce((s,[,n])=>s+n,0).toLocaleString('nl-NL'));
 
   // Vorig seizoen per groep
   const hrV  = Object.entries(telVorig).filter(([c])=>AB_GROEP[c]==='Hardrijden').reduce((s,[,n])=>s+n,0);
