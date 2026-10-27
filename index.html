@@ -301,6 +301,18 @@ function bouwContent(){
         <th class="tr">Nog te ontvangen (verkoop)</th>
       </tr></thead><tbody id="tbl-fa-jg"></tbody></table>
     </div>
+    <div class="card"><div class="ct">Restituties</div><div class="cs" id="fa-rs-cs">Abonnementen met mutatie restitutie, per factuurmoment</div>
+      <table><thead><tr>
+        <th>Datum</th>
+        <th>Vereniging</th>
+        <th>Naam</th>
+        <th>Abo-code</th>
+        <th>Tariefcode</th>
+        <th class="tr">Tarief (verkoop)</th>
+        <th class="tr">Week</th>
+        <th class="tr">Restitutie</th>
+      </tr></thead><tbody id="tbl-fa-rs"></tbody></table>
+    </div>
   </div>
   <div id="p-baancompetitie" class="pnl">
     <div class="kpis" style="grid-template-columns:repeat(4,1fr)">
@@ -1245,6 +1257,7 @@ async function laadFacturering() {
     FA_DATA = data;
     FA_REGELS = null;
     for (const k in FA_JEUGD) delete FA_JEUGD[k];
+    for (const k in FA_REST) delete FA_REST[k];
     const sel = g('fa-seizoen');
     const gekozen = sel.value;
     const seizoenen = [...new Set(data.map(d => d.seizoen))];
@@ -1290,6 +1303,7 @@ function renderFacturering() {
   }
 
   renderFactureringJeugd(g('fa-seizoen').value);
+  renderFactureringRestituties(g('fa-seizoen').value);
   const weergave = (document.querySelector('input[name="fa-weergave"]:checked') || {}).value;
   if (weergave === 'vereniging') { renderFactureringPerVereniging(); return; }
 
@@ -1325,7 +1339,7 @@ const FA_PAS = 'Nieuwe JE-pas';
 async function laadFactureringRegels() {
   let data = [], offset = 0;
   while (true) {
-    const r = await fetch(`${SB_URL}/rest/v1/facturering_regels?select=seizoen,vereniging,regelsoort,abonnementscode,tariefcode,tarief_je,tarief_bga&order=seizoen.desc,vereniging.asc&limit=1000&offset=${offset}`, {
+    const r = await fetch(`${SB_URL}/rest/v1/facturering_regels?select=seizoen,vereniging,relatienr,regelsoort,abonnementscode,tariefcode,tarief_je,tarief_bga&order=seizoen.desc,vereniging.asc&limit=1000&offset=${offset}`, {
       headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
     });
     const batch = await r.json();
@@ -1443,6 +1457,95 @@ async function renderFactureringJeugd(seizoen) {
   }
   const rij = (naam, n, cls = '') => `<tr${cls}><td>${esc(naam)}</td><td class="tr">${n.toLocaleString('nl-NL')}</td><td class="tr">${fmt2(JEUGD_TARIEF)}</td><td class="tr">${fmt2(n * JEUGD_TARIEF)}</td></tr>`;
   tbl.innerHTML = namen.map(n => rij(n, perVer[n])).join('') + rij('Totaal', FA_JEUGD[seizoen].length, ' class="tot"');
+}
+
+// Restituties (na 31-10): tarief (verkoop) − administratiekosten − € 10 per week dat het abonnement
+// gebruikt kon worden, minimaal € 0. Week = 7-daagse periode vanaf week1; de eerste restitutieweek is week 4.
+// Datum van intrekking = uploaddatum van de restitutieregel (timestamp jjjjmmdd_uummss).
+// Per factuurmoment: restituties t/m die datum die nog niet bij een eerder moment vielen.
+const RESTITUTIE_ADMIN = 12.90, RESTITUTIE_PER_WEEK = 10;
+const RESTITUTIE = {
+  '2026-2027': {week1: '2026-10-12', eersteWeek: 4, momenten: ['2027-01-01', '2027-02-28']}
+};
+const FA_REST = {};   // seizoen → restitutieregels uit abonnementen
+function restitutieWeek(cfg, datum) {
+  const dagen = Math.floor((new Date(datum + 'T00:00:00') - new Date(cfg.week1 + 'T00:00:00')) / 86400000);
+  return Math.max(cfg.eersteWeek, Math.floor(dagen / 7) + 1);
+}
+const datumNL = iso => { const [j, m, d] = iso.split('-'); return `${+d}-${+m}-${j}`; };
+async function renderFactureringRestituties(seizoen) {
+  const tbl = g('tbl-fa-rs');
+  if (!tbl || !seizoen) return;
+  const cfg = RESTITUTIE[seizoen];
+  if (!cfg) {
+    tx('fa-rs-cs', 'Restituties per factuurmoment');
+    tbl.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Geen restitutieberekening ingesteld voor ${esc(seizoen)}</td></tr>`;
+    return;
+  }
+  tx('fa-rs-cs', `Tarief (verkoop) − ${fmt2(RESTITUTIE_ADMIN)} administratiekosten − ${fmt2(RESTITUTIE_PER_WEEK)} per week (week 1 begint ${datumNL(cfg.week1)}, eerste restitutieweek is week ${cfg.eersteWeek}), minimaal € 0 · niet verrekend in de totalen hierboven`);
+  if (!FA_REST[seizoen] || !FA_REGELS) {
+    tbl.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
+    try {
+      if (!FA_REGELS) await laadFactureringRegels();
+      if (!FA_REST[seizoen]) {
+        const r = await fetch(`${SB_URL}/rest/v1/abonnementen?select=timestamp,vereniging,relatienr,voornaam,tussen,achternaam,abonnementscode&seizoen=eq.${seizoen.replace('-', '')}&mutatie=ilike.restitutie&order=timestamp.asc&limit=1000`, {
+          headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+        });
+        const data = await r.json();
+        if (!r.ok || !Array.isArray(data)) throw new Error((data && data.message) || ('status ' + r.status));
+        FA_REST[seizoen] = data;
+      }
+    } catch(e) {
+      tbl.innerHTML = `<tr><td colspan="8" style="padding:20px;color:#A32D2D">❌ Fout bij laden restituties: ${esc(e.message)}</td></tr>`;
+      return;
+    }
+    if (g('fa-seizoen').value !== seizoen) return;   // intussen ander seizoen gekozen
+  }
+
+  // Tarief per relatienr + abonnementscode uit facturering_regels
+  const tarieven = new Map();
+  FA_REGELS.filter(r => r.seizoen === seizoen && r.regelsoort !== 'pas_nieuw')
+    .forEach(r => tarieven.set(`${String(r.relatienr).trim()}|${(r.abonnementscode || '').trim().toUpperCase()}`, r));
+
+  const regels = FA_REST[seizoen].map(r => {
+    const ts = String(r.timestamp || '');
+    const datum = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
+    const code = (r.abonnementscode || '').trim().toUpperCase();
+    const f = tarieven.get(`${String(r.relatienr).trim()}|${code}`);
+    const tarief = f && f.tarief_bga != null ? Number(f.tarief_bga) : null;
+    const week = restitutieWeek(cfg, datum);
+    return {datum, week, code, tarief, tariefcode: f ? f.tariefcode : null,
+      vereniging: (r.vereniging || 'Onbekend').trim(),
+      naam: [r.voornaam, r.tussen, r.achternaam].filter(Boolean).join(' '),
+      bedrag: tarief == null ? null : Math.max(0, Math.round((tarief - RESTITUTIE_ADMIN - week * RESTITUTIE_PER_WEEK) * 100) / 100),
+      moment: cfg.momenten.find(m => datum <= m) || null};
+  });
+  if (!regels.length) {
+    tbl.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Nog geen restituties dit seizoen</td></tr>';
+    return;
+  }
+
+  const somBedrag = rs => rs.reduce((s, r) => s + (r.bedrag || 0), 0);
+  let html = '';
+  [...cfg.momenten, null].forEach(m => {
+    const rs = regels.filter(r => r.moment === m);
+    if (!rs.length) return;
+    const titel = m ? `Factuurmoment ${datumNL(m)}` : `Na ${datumNL(cfg.momenten.at(-1))}`;
+    html += `<tr style="background:#fafafa"><td colspan="8" style="font-weight:600">${titel}</td></tr>`;
+    html += rs.map(r => `<tr>
+      <td>${datumNL(r.datum)}</td>
+      <td>${esc(r.vereniging)}</td>
+      <td>${esc(r.naam)}</td>
+      <td>${esc(r.code)}</td>
+      <td>${r.tariefcode ? esc(r.tariefcode) : '<span style="color:#A32D2D;font-size:11px">niet in facturering</span>'}</td>
+      <td class="tr">${r.tarief == null ? '—' : fmt2(r.tarief)}</td>
+      <td class="tr">${r.week}</td>
+      <td class="tr">${r.bedrag == null ? '—' : fmt2(r.bedrag)}</td>
+    </tr>`).join('');
+    html += `<tr style="font-weight:600"><td colspan="7" style="color:#888">Subtotaal ${m ? datumNL(m) : 'later'} · ${rs.length} restitutie(s)</td><td class="tr">${fmt2(somBedrag(rs))}</td></tr>`;
+  });
+  const zonder = regels.filter(r => r.bedrag == null).length;
+  tbl.innerHTML = html + `<tr class="tot"><td colspan="7">Totaal · ${regels.length} restitutie(s)${zonder ? ` · ${zonder} zonder tarief (draai genereerFacturering())` : ''}</td><td class="tr">${fmt2(somBedrag(regels))}</td></tr>`;
 }
 
 // Laad facturering als tab wordt geopend
