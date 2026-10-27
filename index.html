@@ -308,9 +308,11 @@ function bouwContent(){
         <th>Naam</th>
         <th>Abo-code</th>
         <th>Tariefcode</th>
-        <th class="tr">Tarief (verkoop)</th>
         <th class="tr">Week</th>
-        <th class="tr">Restitutie</th>
+        <th class="tr">Tarief inkoop</th>
+        <th class="tr">Restitutie inkoop</th>
+        <th class="tr">Tarief verkoop</th>
+        <th class="tr">Restitutie verkoop</th>
       </tr></thead><tbody id="tbl-fa-rs"></tbody></table>
     </div>
   </div>
@@ -1270,20 +1272,30 @@ async function laadFacturering() {
   }
 }
 
-function renderFacturering() {
+const faWaarschuwing = html => `<div style="background:#fffbeb;border:1px solid #BA7517;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#78350f">⚠️ ${html}</div>`;
+async function renderFacturering() {
   const tbl = g('tbl-fa');
   if (!tbl) return;
-  const rijen = FA_DATA.filter(d => d.seizoen === g('fa-seizoen').value);
+  const seizoen = g('fa-seizoen').value;
+  const rijen = FA_DATA.filter(d => d.seizoen === seizoen);
   g('fa-waarschuwing').innerHTML = '';
 
   if (!rijen.length) {
     ['fa-betalen', 'fa-ontvangen', 'fa-saldo'].forEach(id => tx(id, '—'));
     tbl.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:#888">Nog geen totalen. Voer <b>genereerFacturering()</b> uit in Apps Script (BGA_Facturering).</td></tr>';
+    renderFactureringRestituties(seizoen, []);
     return;
   }
 
+  // Restituties gaan af van inkoop (JE) en verkoop (BGA)
+  let rest = [], restFout = null;
+  try { rest = await haalRestituties(seizoen); } catch(e) { restFout = e; console.error('Fout restituties:', e); }
+  if (g('fa-seizoen').value !== seizoen) return;   // intussen ander seizoen gekozen
+  const restJe  = rest.reduce((s, r) => s + (r.bedragJe  || 0), 0);
+  const restBga = rest.reduce((s, r) => s + (r.bedragBga || 0), 0);
+
   const som = k => rijen.reduce((s, d) => s + Number(d[k] || 0), 0);
-  const betalen = som('totaal_je'), ontvangen = som('totaal_bga');
+  const betalen = som('totaal_je') - restJe, ontvangen = som('totaal_bga') - restBga;
   const zonder = som('aantal_zonder_tarief');
   const aantal = rijen.filter(d => d.tariefcode !== 'Pas_nieuw').reduce((s, d) => s + Number(d.aantal || 0), 0);   // passen zijn geen abonnementen
   const saldo = ontvangen - betalen;
@@ -1293,19 +1305,22 @@ function renderFacturering() {
   tx('fa-saldo', fmt2(saldo));
   const saldoEl = g('fa-saldo');
   if (saldoEl) saldoEl.style.color = saldo < 0 ? RD : '';
-  tx('fa-aantal', `Ontvangen − betalen · ${aantal.toLocaleString('nl-NL')} abonnementen`);
+  tx('fa-aantal', `Ontvangen − betalen · ${aantal.toLocaleString('nl-NL')} abonnementen` + (rest.length ? ` · na ${rest.length} restitutie(s)` : ''));
 
   const bijgewerkt = rijen.map(d => d.bijgewerkt_op).filter(Boolean).sort().pop();
-  tx('fa-cs', 'Actieve abonnementen van het seizoen' + (bijgewerkt ? ` · bijgewerkt ${new Date(bijgewerkt).toLocaleString('nl-NL')}` : ''));
+  tx('fa-cs', 'Actieve abonnementen van het seizoen, min restituties' + (bijgewerkt ? ` · bijgewerkt ${new Date(bijgewerkt).toLocaleString('nl-NL')}` : ''));
 
   if (zonder > 0) {
-    g('fa-waarschuwing').innerHTML = `<div style="background:#fffbeb;border:1px solid #BA7517;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#78350f">⚠️ ${zonder.toLocaleString('nl-NL')} abonnement(en) hebben een tariefcode zonder tarief in <b>artikelen</b> (bijv. vervallen codes) en staan niet in de bedragen.</div>`;
+    g('fa-waarschuwing').innerHTML += faWaarschuwing(`${zonder.toLocaleString('nl-NL')} abonnement(en) hebben een tariefcode zonder tarief in <b>artikelen</b> (bijv. vervallen codes) en staan niet in de bedragen.`);
+  }
+  if (restFout) {
+    g('fa-waarschuwing').innerHTML += faWaarschuwing(`Restituties konden niet worden geladen (${esc(restFout.message)}); de bedragen zijn zonder restituties.`);
   }
 
-  renderFactureringJeugd(g('fa-seizoen').value);
-  renderFactureringRestituties(g('fa-seizoen').value);
+  renderFactureringJeugd(seizoen);
+  renderFactureringRestituties(seizoen, rest, restFout);
   const weergave = (document.querySelector('input[name="fa-weergave"]:checked') || {}).value;
-  if (weergave === 'vereniging') { renderFactureringPerVereniging(); return; }
+  if (weergave === 'vereniging') { renderFactureringPerVereniging(rest); return; }
 
   g('thead-fa').innerHTML = `<tr>
         <th>Tariefcode</th>
@@ -1324,7 +1339,13 @@ function renderFacturering() {
       <td class="tr">${fmt2(d.totaal_bga)}</td>
       <td class="tr" style="color:${s < 0 ? RD : '#888'}">${fmt2(s)}</td>
     </tr>`;
-  }).join('') + `<tr class="tot">
+  }).join('') + (rest.length ? `<tr style="color:#A32D2D">
+      <td style="font-weight:600">Restituties</td>
+      <td class="tr" style="color:#888">${rest.length} restitutie(s)</td>
+      <td class="tr">${fmt2(-restJe)}</td>
+      <td class="tr">${fmt2(-restBga)}</td>
+      <td class="tr">${fmt2(restJe - restBga)}</td>
+    </tr>` : '') + `<tr class="tot">
       <td>Totaal</td>
       <td class="tr">${som('aantal').toLocaleString('nl-NL')}</td>
       <td class="tr">${fmt2(betalen)}</td>
@@ -1351,7 +1372,7 @@ async function laadFactureringRegels() {
   FA_REGELS = data;
 }
 
-async function renderFactureringPerVereniging() {
+async function renderFactureringPerVereniging(rest = []) {
   const tbl = g('tbl-fa');
   g('thead-fa').innerHTML = `<tr>
         <th>Vereniging</th>
@@ -1387,6 +1408,14 @@ async function renderFactureringPerVereniging() {
     t.je  += Number(r.tarief_je || 0);
     t.bga += Number(r.tarief_bga || 0);
   });
+  // Restituties per vereniging (negatief)
+  const restPerVer = new Map();
+  rest.forEach(r => {
+    const t = restPerVer.get(r.vereniging) || {aantal: 0, je: 0, bga: 0};
+    t.aantal++; t.je += r.bedragJe || 0; t.bga += r.bedragBga || 0;
+    restPerVer.set(r.vereniging, t);
+    if (!perVer.has(r.vereniging)) perVer.set(r.vereniging, new Map());
+  });
 
   if (!perVer.size) {
     tbl.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#888">Geen regels voor dit seizoen. Voer <b>genereerFacturering()</b> uit in Apps Script (BGA_Facturering).</td></tr>';
@@ -1413,7 +1442,19 @@ async function renderFactureringPerVereniging() {
       ${saldoTd(t.bga - t.je, '#888')}
     </tr>`;
     });
-    if (codes.size > 1) html += `<tr style="background:#fafafa;font-weight:600">
+    const rv = restPerVer.get(ver);
+    if (rv) {
+      sub.je -= rv.je; sub.bga -= rv.bga;
+      html += `<tr style="color:#A32D2D">
+      <td style="font-weight:600">${codes.size === 0 ? esc(ver) : ''}</td>
+      <td>Restituties</td>
+      <td class="tr" style="color:#888">${rv.aantal}</td>
+      <td class="tr">${fmt2(-rv.je)}</td>
+      <td class="tr">${fmt2(-rv.bga)}</td>
+      <td class="tr">${fmt2(rv.je - rv.bga)}</td>
+    </tr>`;
+    }
+    if (codes.size + (rv ? 1 : 0) > 1) html += `<tr style="background:#fafafa;font-weight:600">
       <td></td>
       <td style="color:#888">Subtotaal</td>
       <td class="tr">${sub.aantal.toLocaleString('nl-NL')}</td>
@@ -1473,79 +1514,83 @@ function restitutieWeek(cfg, datum) {
   return Math.max(cfg.eersteWeek, Math.floor(dagen / 7) + 1);
 }
 const datumNL = iso => { const [j, m, d] = iso.split('-'); return `${+d}-${+m}-${j}`; };
-async function renderFactureringRestituties(seizoen) {
+const restitutieBedrag = (tarief, week) => tarief == null ? null
+  : Math.max(0, Math.round((tarief - RESTITUTIE_ADMIN - week * RESTITUTIE_PER_WEEK) * 100) / 100);
+// Restitutieregels van het seizoen met week, factuurmoment en bedrag voor inkoop (JE) en verkoop (BGA).
+// Tarieven per relatienr + abonnementscode uit facturering_regels. Geen instelling voor het seizoen → [].
+async function haalRestituties(seizoen) {
+  const cfg = RESTITUTIE[seizoen];
+  if (!cfg) return [];
+  if (!FA_REGELS) await laadFactureringRegels();
+  if (!FA_REST[seizoen]) {
+    const r = await fetch(`${SB_URL}/rest/v1/abonnementen?select=timestamp,vereniging,relatienr,voornaam,tussen,achternaam,abonnementscode&seizoen=eq.${seizoen.replace('-', '')}&mutatie=ilike.restitutie&order=timestamp.asc&limit=1000`, {
+      headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
+    });
+    const data = await r.json();
+    if (!r.ok || !Array.isArray(data)) throw new Error((data && data.message) || ('status ' + r.status));
+    FA_REST[seizoen] = data;
+  }
+  const tarieven = new Map();
+  FA_REGELS.filter(r => r.seizoen === seizoen && r.regelsoort !== 'pas_nieuw')
+    .forEach(r => tarieven.set(`${String(r.relatienr).trim()}|${(r.abonnementscode || '').trim().toUpperCase()}`, r));
+  return FA_REST[seizoen].map(r => {
+    const ts = String(r.timestamp || '');
+    const datum = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
+    const code = (r.abonnementscode || '').trim().toUpperCase();
+    const f = tarieven.get(`${String(r.relatienr).trim()}|${code}`);
+    const tariefJe  = f && f.tarief_je  != null ? Number(f.tarief_je)  : null;
+    const tariefBga = f && f.tarief_bga != null ? Number(f.tarief_bga) : null;
+    const week = restitutieWeek(cfg, datum);
+    return {datum, week, code, tariefJe, tariefBga, tariefcode: f ? f.tariefcode : null,
+      vereniging: ((f && f.vereniging) || r.vereniging || 'Onbekend').trim(),
+      naam: [r.voornaam, r.tussen, r.achternaam].filter(Boolean).join(' '),
+      bedragJe: restitutieBedrag(tariefJe, week), bedragBga: restitutieBedrag(tariefBga, week),
+      moment: cfg.momenten.find(m => datum <= m) || null};
+  });
+}
+
+function renderFactureringRestituties(seizoen, regels, fout = null) {
   const tbl = g('tbl-fa-rs');
   if (!tbl || !seizoen) return;
   const cfg = RESTITUTIE[seizoen];
   if (!cfg) {
     tx('fa-rs-cs', 'Restituties per factuurmoment');
-    tbl.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Geen restitutieberekening ingesteld voor ${esc(seizoen)}</td></tr>`;
+    tbl.innerHTML = `<tr><td colspan="10" style="text-align:center;padding:20px;color:#888">Geen restitutieberekening ingesteld voor ${esc(seizoen)}</td></tr>`;
     return;
   }
-  tx('fa-rs-cs', `Tarief (verkoop) − ${fmt2(RESTITUTIE_ADMIN)} administratiekosten − ${fmt2(RESTITUTIE_PER_WEEK)} per week (week 1 begint ${datumNL(cfg.week1)}, eerste restitutieweek is week ${cfg.eersteWeek}), minimaal € 0 · niet verrekend in de totalen hierboven`);
-  if (!FA_REST[seizoen] || !FA_REGELS) {
-    tbl.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">⏳ Laden…</td></tr>';
-    try {
-      if (!FA_REGELS) await laadFactureringRegels();
-      if (!FA_REST[seizoen]) {
-        const r = await fetch(`${SB_URL}/rest/v1/abonnementen?select=timestamp,vereniging,relatienr,voornaam,tussen,achternaam,abonnementscode&seizoen=eq.${seizoen.replace('-', '')}&mutatie=ilike.restitutie&order=timestamp.asc&limit=1000`, {
-          headers: {'apikey': SB_KEY, 'Authorization': `Bearer ${SB_KEY}`}
-        });
-        const data = await r.json();
-        if (!r.ok || !Array.isArray(data)) throw new Error((data && data.message) || ('status ' + r.status));
-        FA_REST[seizoen] = data;
-      }
-    } catch(e) {
-      tbl.innerHTML = `<tr><td colspan="8" style="padding:20px;color:#A32D2D">❌ Fout bij laden restituties: ${esc(e.message)}</td></tr>`;
-      return;
-    }
-    if (g('fa-seizoen').value !== seizoen) return;   // intussen ander seizoen gekozen
+  tx('fa-rs-cs', `Tarief − ${fmt2(RESTITUTIE_ADMIN)} administratiekosten − ${fmt2(RESTITUTIE_PER_WEEK)} per week (week 1 begint ${datumNL(cfg.week1)}, eerste restitutieweek is week ${cfg.eersteWeek}), minimaal € 0, voor inkoop (JE) en verkoop (BGA) · afgetrokken van de tegels en totalen hierboven`);
+  if (fout) {
+    tbl.innerHTML = `<tr><td colspan="10" style="padding:20px;color:#A32D2D">❌ Fout bij laden restituties: ${esc(fout.message)}</td></tr>`;
+    return;
   }
-
-  // Tarief per relatienr + abonnementscode uit facturering_regels
-  const tarieven = new Map();
-  FA_REGELS.filter(r => r.seizoen === seizoen && r.regelsoort !== 'pas_nieuw')
-    .forEach(r => tarieven.set(`${String(r.relatienr).trim()}|${(r.abonnementscode || '').trim().toUpperCase()}`, r));
-
-  const regels = FA_REST[seizoen].map(r => {
-    const ts = String(r.timestamp || '');
-    const datum = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}`;
-    const code = (r.abonnementscode || '').trim().toUpperCase();
-    const f = tarieven.get(`${String(r.relatienr).trim()}|${code}`);
-    const tarief = f && f.tarief_bga != null ? Number(f.tarief_bga) : null;
-    const week = restitutieWeek(cfg, datum);
-    return {datum, week, code, tarief, tariefcode: f ? f.tariefcode : null,
-      vereniging: (r.vereniging || 'Onbekend').trim(),
-      naam: [r.voornaam, r.tussen, r.achternaam].filter(Boolean).join(' '),
-      bedrag: tarief == null ? null : Math.max(0, Math.round((tarief - RESTITUTIE_ADMIN - week * RESTITUTIE_PER_WEEK) * 100) / 100),
-      moment: cfg.momenten.find(m => datum <= m) || null};
-  });
   if (!regels.length) {
-    tbl.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#888">Nog geen restituties dit seizoen</td></tr>';
+    tbl.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:#888">Nog geen restituties dit seizoen</td></tr>';
     return;
   }
 
-  const somBedrag = rs => rs.reduce((s, r) => s + (r.bedrag || 0), 0);
+  const som = (rs, k) => rs.reduce((s, r) => s + (r[k] || 0), 0);
+  const bedragTd = n => `<td class="tr">${n == null ? '—' : fmt2(n)}</td>`;
   let html = '';
   [...cfg.momenten, null].forEach(m => {
     const rs = regels.filter(r => r.moment === m);
     if (!rs.length) return;
     const titel = m ? `Factuurmoment ${datumNL(m)}` : `Na ${datumNL(cfg.momenten.at(-1))}`;
-    html += `<tr style="background:#fafafa"><td colspan="8" style="font-weight:600">${titel}</td></tr>`;
+    html += `<tr style="background:#fafafa"><td colspan="10" style="font-weight:600">${titel}</td></tr>`;
     html += rs.map(r => `<tr>
       <td>${datumNL(r.datum)}</td>
       <td>${esc(r.vereniging)}</td>
       <td>${esc(r.naam)}</td>
       <td>${esc(r.code)}</td>
       <td>${r.tariefcode ? esc(r.tariefcode) : '<span style="color:#A32D2D;font-size:11px">niet in facturering</span>'}</td>
-      <td class="tr">${r.tarief == null ? '—' : fmt2(r.tarief)}</td>
       <td class="tr">${r.week}</td>
-      <td class="tr">${r.bedrag == null ? '—' : fmt2(r.bedrag)}</td>
+      ${bedragTd(r.tariefJe)}${bedragTd(r.bedragJe)}${bedragTd(r.tariefBga)}${bedragTd(r.bedragBga)}
     </tr>`).join('');
-    html += `<tr style="font-weight:600"><td colspan="7" style="color:#888">Subtotaal ${m ? datumNL(m) : 'later'} · ${rs.length} restitutie(s)</td><td class="tr">${fmt2(somBedrag(rs))}</td></tr>`;
+    html += `<tr style="font-weight:600"><td colspan="6" style="color:#888">Subtotaal ${m ? datumNL(m) : 'later'} · ${rs.length} restitutie(s)</td>
+      <td></td><td class="tr">${fmt2(som(rs, 'bedragJe'))}</td><td></td><td class="tr">${fmt2(som(rs, 'bedragBga'))}</td></tr>`;
   });
-  const zonder = regels.filter(r => r.bedrag == null).length;
-  tbl.innerHTML = html + `<tr class="tot"><td colspan="7">Totaal · ${regels.length} restitutie(s)${zonder ? ` · ${zonder} zonder tarief (draai genereerFacturering())` : ''}</td><td class="tr">${fmt2(somBedrag(regels))}</td></tr>`;
+  const zonder = regels.filter(r => r.tariefcode == null).length;
+  tbl.innerHTML = html + `<tr class="tot"><td colspan="6">Totaal · ${regels.length} restitutie(s)${zonder ? ` · ${zonder} niet in facturering (draai genereerFacturering())` : ''}</td>
+      <td></td><td class="tr">${fmt2(som(regels, 'bedragJe'))}</td><td></td><td class="tr">${fmt2(som(regels, 'bedragBga'))}</td></tr>`;
 }
 
 // Laad facturering als tab wordt geopend
