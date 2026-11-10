@@ -171,8 +171,8 @@ function bouwContent(){
   <div id="p-overzicht" class="pnl on">
     <div class="kpis">
       <div class="kpi bl"><div class="kl">Totaal inkomsten</div><div class="kv" id="o-ir">—</div><div class="ks" id="o-ib"></div><div class="kd" id="o-id"></div></div>
-      <div class="kpi rd"><div class="kl">Totaal uitgaven</div><div class="kv" id="o-ur">—</div><div class="ks" id="o-ub"></div><div class="kd" id="o-ud"></div></div>
-      <div class="kpi gr"><div class="kl">Resultaat</div><div class="kv" id="o-res">—</div><div class="ks" id="o-res-s"></div><div class="kd" id="o-resd"></div></div>
+      <div class="kpi rd"><div class="kl">Totaal uitgaven</div><div class="kv" id="o-ur">—</div><div class="ks" id="o-ub"></div><div class="kd" id="o-ud"></div><div id="o-unt"></div></div>
+      <div class="kpi gr"><div class="kl">Resultaat</div><div class="kv" id="o-res">—</div><div class="ks" id="o-res-s"></div><div class="kd" id="o-resd"></div><div id="o-res-nto"></div></div>
       <div class="kpi am"><div class="kl">Begroot resultaat</div><div class="kv" id="o-bres">—</div><div class="ks" id="o-bres-s"></div></div>
     </div>
     <div class="g2">
@@ -382,6 +382,33 @@ function bouwContent(){
   </div>`;
 }
 
+// ── NOG TE ONTVANGEN FACTUREN (Overzicht) ─────────────────────
+// Inkoop abonnementen (JE-tarief, min restituties) uit Facturering, als aparte regel onder Totaal uitgaven.
+// Zet het seizoen op false zodra de facturen zijn ontvangen en geboekt → bedrag wordt € 0.
+const NOG_TE_ONTVANGEN_FACTUREN = {'2026-2027': true};
+async function renderNogTeOntvangenFacturen(ur,res){
+  const bj=BJ_NAAM, elU=g('o-unt'), elR=g('o-res-nto');
+  if(!elU||!elR) return;
+  elU.innerHTML=''; elR.innerHTML='';
+  if(!(bj in NOG_TE_ONTVANGEN_FACTUREN)) return;
+  let bedrag=0, fout=null;
+  if(NOG_TE_ONTVANGEN_FACTUREN[bj]){
+    try{
+      const r=await fetch(`${SB_URL}/rest/v1/facturering_totalen?select=totaal_je&seizoen=eq.${encodeURIComponent(bj)}&limit=1000`,{headers:{'apikey':SB_KEY,'Authorization':`Bearer ${SB_KEY}`}});
+      const data=await r.json();
+      if(!r.ok||!Array.isArray(data)) throw new Error((data&&data.message)||('status '+r.status));
+      let restJe=0;
+      try{ restJe=(await haalRestituties(bj)).reduce((s,x)=>s+(x.bedragJe||0),0); }catch(e){ console.error('Fout restituties:',e); }
+      bedrag=data.reduce((s,d)=>s+Number(d.totaal_je||0),0)-restJe;
+    }catch(e){ fout=e; console.error('Fout nog te ontvangen facturen:',e); }
+  }
+  if(BJ_NAAM!==bj) return;   // intussen ander boekjaar gekozen
+  const stijl='font-size:11px;margin-top:6px;padding-top:6px;border-top:.5px solid #eee;color:#555';
+  if(fout){ elU.innerHTML=`<div style="${stijl}">Nog te ontvangen facturen: <span style="color:#A32D2D">niet geladen</span></div>`; return; }
+  elU.innerHTML=`<div style="${stijl}">Nog te ontvangen facturen (inkoop abonnementen): <b>${fmt(bedrag)}</b><br>Incl. nog te ontvangen: <b>${fmt(ur+bedrag)}</b></div>`;
+  elR.innerHTML=`<div style="${stijl}">Na nog te ontvangen facturen: <b>${fmts(res-bedrag)}</b></div>`;
+}
+
 function renderAlles(){renderOv();renderCat();renderInk();renderUit();renderBal();renderReal();}
 
 function renderOv(){
@@ -397,6 +424,7 @@ function renderOv(){
   const re=g('o-res');re.textContent=fmts(res);re.className='kv '+(res>=0?'pos':'neg');
   tx('o-res-s',BJ_NAAM);delta('o-resd',res,'Positief resultaat','Negatief resultaat');
   tx('o-bres',fmts(bres));tx('o-bres-s','Begroting '+BJ_NAAM);
+  renderNogTeOntvangenFacturen(ur,res);
   mkChart('c1',{type:'bar',data:{labels:samenv.map(c=>c.categorie.toUpperCase()),datasets:[
     {label:'Inkomsten',data:samenv.map(c=>c.totaal_inkomsten||0),backgroundColor:samenv.map(c=>CAT_CLR[c.categorie]||BL),borderRadius:3},
     {label:'Uitgaven',data:samenv.map(c=>c.totaal_uitgaven||0),backgroundColor:samenv.map(c=>(CAT_CLR[c.categorie]||BL)+'88'),borderRadius:3}
