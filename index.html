@@ -406,7 +406,7 @@ async function renderNogTeOntvangenFacturen(ur,res){
   const stijl='font-size:11px;margin-top:6px;padding-top:6px;border-top:.5px solid #eee;color:#555';
   if(fout){ elU.innerHTML=`<div style="${stijl}">Nog te ontvangen facturen: <span style="color:#A32D2D">niet geladen</span></div>`; return; }
   elU.innerHTML=`<div style="${stijl}">Nog te ontvangen facturen (inkoop abonnementen): <b>${fmt(bedrag)}</b><br>Incl. nog te ontvangen: <b>${fmt(ur+bedrag)}</b></div>`;
-  elR.innerHTML=`<div style="${stijl}">Na nog te ontvangen facturen: <b>${fmts(res-bedrag)}</b></div>`;
+  elR.innerHTML=`<div style="${stijl}">Nog te ontvangen facturen (inkoop abonnementen): <b>${fmts(-bedrag)}</b><br>Na nog te ontvangen facturen: <b>${fmts(res-bedrag)}</b></div>`;
 }
 
 function renderAlles(){renderOv();renderCat();renderInk();renderUit();renderBal();renderReal();}
