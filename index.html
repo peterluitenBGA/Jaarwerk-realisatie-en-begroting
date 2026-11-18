@@ -59,6 +59,15 @@ tr:hover:not(.tot) td{background:#f0f6ff}
 .loading{display:flex;align-items:center;justify-content:center;height:120px;color:#888;font-size:13px;gap:10px}
 .spinner{width:20px;height:20px;border:2px solid #e0e0e0;border-top-color:#003D7C;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.rp-lijst{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:9px}
+.rp-item{text-align:left;background:#fff;border:.5px solid #e0e0e0;border-radius:8px;padding:11px 13px;cursor:pointer;font:inherit}
+.rp-item:hover{border-color:#003D7C;background:#f0f6ff}.rp-item.on{border-color:#003D7C;box-shadow:inset 3px 0 0 #003D7C}
+.rp-item b{display:block;font-size:13px;color:#003D7C;margin-bottom:2px}.rp-item span{font-size:11px;color:#888}
+.rp{font-size:13px;line-height:1.55;color:#333}.rp h1{font-size:18px;color:#003D7C;margin:6px 0 4px}
+.rp h2{font-size:15px;color:#003D7C;margin:20px 0 6px;padding-top:10px;border-top:.5px solid #eee}.rp h3{font-size:13px;color:#003D7C;margin:14px 0 4px}
+.rp p{margin:0 0 9px}.rp ul,.rp ol{margin:0 0 10px 20px;padding:0}.rp li{margin:2px 0}.rp .ital{font-style:italic;color:#888;font-size:11px;margin-bottom:4px}
+.rp table{margin:4px 0 14px}.rp .tbl{overflow-x:auto}
+@media print{.hdr,.topbar,.tabs,#p-rapporten>.card:first-child,.btn-ref{display:none!important}.wrap{padding:0}#rp-card{border:none}}
 @media(max-width:660px){.g2{grid-template-columns:1fr}.wrap,.hdr,.topbar{padding-left:14px;padding-right:14px}.tabs{padding:0 6px}}
 </style>
 </head>
@@ -85,6 +94,7 @@ tr:hover:not(.tot) td{background:#f0f6ff}
   <button class="tab"     onclick="showTab('verenigingen',this)">Abonnementen verenigingen</button>
   <button class="tab"     onclick="showTab('facturering',this)">Facturering</button>
   <button class="tab"     onclick="showTab('baancompetitie',this)">Baancompetitie</button>
+  <button class="tab"     onclick="showTab('rapporten',this)">Rapporten</button>
 </div>
 <div class="wrap" id="main-wrap">
   <div class="loading"><div class="spinner"></div> Data laden uit Supabase…</div>
@@ -378,6 +388,18 @@ function bouwContent(){
         <th class="tr" id="th-jg-vor">Vorig</th>
         <th class="tr">Verschil</th>
       </tr></thead><tbody id="tbl-ab-jg"></tbody></table>
+    </div>
+  </div>
+  <div id="p-rapporten" class="pnl">
+    <div class="card"><div class="ct">Rapporten</div><div class="cs">Verslagen voor bestuur en kascommissie · opgeslagen in Supabase (tabel rapporten)</div>
+      <div id="rp-lijst" class="rp-lijst"></div>
+    </div>
+    <div class="card" id="rp-card" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <div><div class="ct" id="rp-titel"></div><div class="cs" id="rp-sub" style="margin-bottom:0"></div></div>
+        <button class="btn-ref" onclick="window.print()">🖨️ Afdrukken</button>
+      </div>
+      <div id="rp-inhoud" class="rp"></div>
     </div>
   </div>`;
 }
@@ -1671,6 +1693,68 @@ window.showTab = function(id, el) {
     const tbl = g('tbl-bc');
     if (tbl && !tbl.innerHTML) laadBaancompetitie();
   }
+};
+
+// ── Rapporten (markdown uit tabel rapporten, gevuld met queries/rapporten_uploaden.py) ──
+let RAPPORTEN = [];
+function mdEsc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function mdInline(s){return mdEsc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');}
+function mdNaarHtml(md){
+  const L = md.split('\n'); let h = '', i = 0;
+  while (i < L.length) {
+    const ln = L[i];
+    if (/^#{1,3} /.test(ln)) { const n = ln.match(/^#+/)[0].length; h += `<h${n}>${mdInline(ln.slice(n+1))}</h${n}>`; i++; continue; }
+    if (/^_.*_$/.test(ln.trim())) { h += `<div class="ital">${mdInline(ln.trim().slice(1,-1))}</div>`; i++; continue; }
+    if (ln.startsWith('|')) {
+      const rows = [];
+      while (i < L.length && L[i].startsWith('|')) { const c = L[i].trim().replace(/^\||\|$/g,'').split('|').map(x=>x.trim()); if (!c.every(x=>/^[-: ]*$/.test(x))) rows.push(c); i++; }
+      const num = v => /^[-+]?(€\s?)?-?[\d.,]+%?$|^-?€/.test(v.replace(/\*/g,'').trim());
+      h += '<div class="tbl"><table><thead><tr>' + rows[0].map((c,k)=>`<th${k?' class="tr"':''}>${mdInline(c)}</th>`).join('') + '</tr></thead><tbody>';
+      rows.slice(1).forEach(r => { const tot = r[0].startsWith('**') || r[1]?.startsWith('**');
+        h += `<tr${tot?' class="tot"':''}>` + r.map((c,k)=>`<td${k&&num(c)?' class="tr"':''}>${mdInline(c.replace(/\*\*/g,''))}</td>`).join('') + '</tr>'; });
+      h += '</tbody></table></div>'; continue;
+    }
+    if (/^( {4})?(- |\d+\. )/.test(ln)) {
+      const ord = /^\d+\. /.test(ln); h += ord ? '<ol>' : '<ul>';
+      while (i < L.length && /^( {4})?(- |\d+\. )/.test(L[i])) {
+        const sub = L[i].startsWith('    '); const t = L[i].replace(/^ *(- |\d+\. )/,'');
+        h += `<li${sub?' style="margin-left:18px;list-style:circle"':''}>${mdInline(t)}</li>`; i++;
+      }
+      h += ord ? '</ol>' : '</ul>'; continue;
+    }
+    if (ln.trim()) h += `<p>${mdInline(ln)}</p>`;
+    i++;
+  }
+  return h;
+}
+async function laadRapporten(){
+  const lijst = g('rp-lijst');
+  lijst.innerHTML = '<div class="loading"><div class="spinner"></div> Rapporten laden…</div>';
+  try {
+    RAPPORTEN = await sbGet('rapporten','select=slug,titel,onderwerp,peildatum,bijgewerkt&order=volgorde.asc');
+  } catch(e) {
+    lijst.innerHTML = `<div class="cs">Rapporten konden niet geladen worden (${mdEsc(e.message)}). Is de tabel al aangemaakt met queries/rapporten_tabel.sql?</div>`;
+    return;
+  }
+  if (!RAPPORTEN.length) { lijst.innerHTML = '<div class="cs">Nog geen rapporten opgeslagen.</div>'; return; }
+  const dt = d => d ? new Date(d).toLocaleDateString('nl-NL') : '';
+  lijst.innerHTML = RAPPORTEN.map(r => `<button class="rp-item" data-slug="${mdEsc(r.slug)}" onclick="toonRapport(this.dataset.slug)"><b>${mdEsc(r.titel)}</b><span>${mdEsc(r.onderwerp||'')}${r.peildatum?' · peildatum '+dt(r.peildatum):''}</span></button>`).join('');
+}
+async function toonRapport(slug){
+  document.querySelectorAll('.rp-item').forEach(b=>b.classList.toggle('on', b.dataset.slug===slug));
+  const r = RAPPORTEN.find(x=>x.slug===slug); const card = g('rp-card');
+  card.style.display = ''; tx('rp-titel', r.titel);
+  tx('rp-sub', `${r.onderwerp||''} · bijgewerkt ${new Date(r.bijgewerkt).toLocaleString('nl-NL')}`);
+  g('rp-inhoud').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const [d] = await sbGet('rapporten', `slug=eq.${encodeURIComponent(slug)}&select=markdown`);
+    g('rp-inhoud').innerHTML = mdNaarHtml(d.markdown);
+  } catch(e) { g('rp-inhoud').innerHTML = `<div class="cs">Laden mislukt: ${mdEsc(e.message)}</div>`; }
+}
+const origShowTabRp = window.showTab;
+window.showTab = function(id, el) {
+  origShowTabRp(id, el);
+  if (id === 'rapporten' && !g('rp-lijst').innerHTML) laadRapporten();
 };
 
 // Laad verenigingen als tab wordt geopend
